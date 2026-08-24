@@ -18,4 +18,4 @@ indent_size = 2
 trim_trailing_whitespace = false
 
 [*.sql]
-indent_size = 3
+indent_size = 4
