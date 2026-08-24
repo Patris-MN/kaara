@@ -9,6 +9,7 @@
   "cancel": "إلغاء",
   "loading": "جارٍ التحميل…",
   "signedInAs": "مسجّل الدخول باسم {{name}}",
+  "platformAdministrator": "مسؤول المنصة",
   "notFound": {
     "title": "الصفحة غير موجودة",
     "body": "هذه الصفحة غير موجودة.",

@@ -2,6 +2,7 @@ export type AuthUser = {
   userId: string;
   email: string;
   displayName: string;
+  isPlatformAdministrator: boolean;
 };
 
 export type LoginResponse = AuthUser & {

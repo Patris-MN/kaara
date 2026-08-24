@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PTS.Host.Persistence.Testing;
 using PTS.Modules.Identity;
+using PTS.Modules.PlatformAdministration;
 using PTS.Modules.Tenancy;
 using PTS.Modules.WorkManagement;
 
@@ -41,6 +42,8 @@ public class AppDbContext : DbContext
 
     public DbSet<Project> Projects => Set<Project>();
 
+    public DbSet<PlatformAdministrator> PlatformAdministrators => Set<PlatformAdministrator>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new UserConfiguration());
@@ -50,6 +53,7 @@ public class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new TenantIsolationTestRecordConfiguration());
         modelBuilder.ApplyConfiguration(new WorkspaceConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
+        modelBuilder.ApplyConfiguration(new PlatformAdministratorConfiguration());
 
         modelBuilder.Entity<UserCredential>()
             .HasOne<User>()
@@ -94,6 +98,13 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(p => p.TenantId)
             .HasConstraintName("fk_projects_tenants_tenant_id")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PlatformAdministrator>()
+            .HasOne<User>()
+            .WithMany()
+            .HasForeignKey(a => a.UserId)
+            .HasConstraintName("fk_platform_administrators_users_user_id")
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -55,6 +55,9 @@ public sealed class AuthenticationHttpTests : IClassFixture<PtsWebApplicationFac
         Assert.Equal(created.UserId, me!.UserId);
         Assert.Equal(created.Email, me.Email);
         Assert.Equal(created.DisplayName, me.DisplayName);
+        Assert.False(created.IsPlatformAdministrator);
+        Assert.False(tokens.IsPlatformAdministrator);
+        Assert.False(me.IsPlatformAdministrator);
     }
 
     [SkippableFact]
@@ -132,5 +135,8 @@ public sealed class PtsWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting("Authentication:Jwt:SigningKey", "PTS-DEV-ONLY-NOT-FOR-PRODUCTION-256BIT");
         builder.UseSetting("Authentication:Jwt:Issuer", "pts-dev");
         builder.UseSetting("Authentication:Jwt:Audience", "pts-api-dev");
+        builder.UseSetting("PTS_BOOTSTRAP_PLATFORM_ADMIN_EMAIL", "");
+        builder.UseSetting("PTS_BOOTSTRAP_PLATFORM_ADMIN_PASSWORD", "");
+        builder.UseSetting("PTS_BOOTSTRAP_PLATFORM_ADMIN_DISPLAY_NAME", "");
     }
 }

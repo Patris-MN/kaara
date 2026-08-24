@@ -91,6 +91,7 @@ export function AppLayout() {
         <div className="header-end">
           <p className="current-user">
             {t("common:signedInAs", { name: user?.displayName ?? user?.email })}
+            {user?.isPlatformAdministrator ? ` · ${t("common:platformAdministrator")}` : null}
           </p>
           <LanguageSwitcher />
           <button type="button" onClick={() => { logout(); navigate("/login"); }}>

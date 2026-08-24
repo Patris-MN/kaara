@@ -162,4 +162,14 @@ public class ModuleBoundaryTests
             missingModules.Count == 0,
             $"{HostAssemblyName} must reference every module, but is missing: {string.Join(", ", missingModules)}");
     }
+
+    [Fact]
+    public void User_must_not_carry_admin_or_role_properties()
+    {
+        var names = typeof(PTS.Modules.Identity.User).GetProperties().Select(p => p.Name).ToHashSet();
+        Assert.DoesNotContain("IsAdmin", names);
+        Assert.DoesNotContain("IsPlatformAdministrator", names);
+        Assert.DoesNotContain("Role", names);
+        Assert.DoesNotContain("TenantId", names);
+    }
 }

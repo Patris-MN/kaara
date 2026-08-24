@@ -68,7 +68,8 @@ public sealed class DatabaseRolePrivilegeTests
             WHERE tablename IN (
                 'tenant_isolation_test_records',
                 'workspaces',
-                'projects')
+                'projects',
+                'platform_administrators')
             ORDER BY tablename;
             """;
         await using var reader = await command.ExecuteReaderAsync();
@@ -79,6 +80,7 @@ public sealed class DatabaseRolePrivilegeTests
         }
 
         Assert.Contains("tenant_isolation_test_records", owners.Keys);
+        Assert.Contains("platform_administrators", owners.Keys);
         foreach (var (table, owner) in owners)
         {
             Assert.NotEqual("app_role", owner);

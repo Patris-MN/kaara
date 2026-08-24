@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using PTS.Host.TenantAccess;
 using PTS.Modules.Identity;
+using PTS.Modules.PlatformAdministration;
 using PTS.Modules.Tenancy;
 
 namespace PTS.Host.Persistence;
@@ -30,6 +32,8 @@ public static class PersistenceExtensions
         services.AddScoped<IUserAccountStore, EfUserAccountStore>();
         services.AddScoped<ITenantLifecycleStore, EfTenantLifecycleStore>();
         services.AddScoped<ITenantRlsSessionFactory, TenantRlsSessionFactory>();
+        services.AddScoped<IPlatformAdministratorStore, EfPlatformAdministratorStore>();
+        services.AddHostedService<DevelopmentPlatformAdministratorBootstrap>();
 
         return services;
     }

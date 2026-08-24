@@ -9,9 +9,9 @@ namespace PTS.Modules.PlatformAdministration;
 public static class PlatformAdministrationModuleExtensions
 {
     /// <summary>
-    /// Registers Platform Administration module services with the DI container.
-    /// Phase 1: architectural placeholder only — no platform-admin roles or
-    /// operator tooling is implemented yet. See README.md.
+    /// Registers Platform Administration module services. The persistence
+    /// adapter for <see cref="IPlatformAdministratorStore"/> is completed by
+    /// the Host.
     /// </summary>
     public static IServiceCollection AddPlatformAdministrationModule(this IServiceCollection services)
     {

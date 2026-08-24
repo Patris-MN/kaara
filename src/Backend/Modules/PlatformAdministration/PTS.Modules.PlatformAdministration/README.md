@@ -5,14 +5,14 @@
 Owns permissions and tooling for **internal platform operators/staff** — people who
 manage the SaaS itself, not a specific tenant.
 
-In scope (future phases):
+A platform administrator is recorded in `platform_administrators` (keyed by
+global `UserId`). It is **not** a column on `User` and **not** a tenant
+`Membership` role.
 
-- Platform-administrator identity/permission model, held completely separate from
-  tenant `Membership` roles (a platform admin is not automatically a member of any
-  tenant, and a tenant admin is not automatically a platform admin).
-- Any controlled, audited cross-tenant visibility needed for support/ops. Cross-tenant
-  reads for support purposes must go through explicit, audited code paths in this
-  module — never through ordinary tenant-scoped queries or by disabling RLS ad hoc.
+In scope:
+
+- Granting/looking up the platform-administrator flag for a global user.
+- Future controlled, audited cross-tenant visibility for support/ops.
 
 Explicitly **out of scope**:
 
@@ -20,9 +20,10 @@ Explicitly **out of scope**:
 
 ## Allowed dependencies
 
-- `PTS.SharedKernel` only.
+- `PTS.SharedKernel` only (plus provider-agnostic EF Core mapping packages).
 
-## Phase 1 status
+## Local bootstrap
 
-Architectural placeholder only. No platform-admin identity, permissions, or tooling
-is implemented in this phase.
+In Development, the Host can create and grant a platform administrator from
+environment variables (see `infra/docker/.env.example`). Those values must
+never be committed.

@@ -9,6 +9,7 @@
   "cancel": "پاشگەزبوونەوە",
   "loading": "بارکردن…",
   "signedInAs": "چوونەژوورەوە وەک {{name}}",
+  "platformAdministrator": "بەڕێوەبەری پلاتفۆرم",
   "notFound": {
     "title": "پەڕە نەدۆزرایەوە",
     "body": "ئەم پەڕەیە بوونی نییە.",

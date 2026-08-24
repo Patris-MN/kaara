@@ -1,5 +1,6 @@
 using PTS.Host.Authentication;
 using PTS.Modules.Identity;
+using PTS.Modules.PlatformAdministration;
 using PTS.SharedKernel.Identity;
 
 namespace PTS.Host.Http;
@@ -26,7 +27,7 @@ public static class AuthEndpoints
         {
             var user = await authentication.RegisterAsync(
                 request.Email, request.Password, request.DisplayName, cancellationToken);
-            return Results.Created("/auth/me", new AuthUserResponse(user.Id, user.Email, user.DisplayName));
+            return Results.Created("/auth/me", new AuthUserResponse(user.Id, user.Email, user.DisplayName, IsPlatformAdministrator: false));
         }
         catch (DuplicateEmailException)
         {
@@ -49,6 +50,7 @@ public static class AuthEndpoints
         LoginRequest request,
         IUserAuthenticationService authentication,
         JwtAccessTokenIssuer tokens,
+        IPlatformAdministratorStore platformAdministrators,
         CancellationToken cancellationToken)
     {
         var user = await authentication.AuthenticateAsync(request.Email, request.Password, cancellationToken);
@@ -58,12 +60,15 @@ public static class AuthEndpoints
         }
 
         var accessToken = tokens.Issue(user, out var expiresAtUtc);
-        return Results.Ok(new LoginResponse(accessToken, expiresAtUtc, user.Id, user.Email, user.DisplayName));
+        var isPlatformAdministrator = await platformAdministrators.IsPlatformAdministratorAsync(user.Id, cancellationToken);
+        return Results.Ok(new LoginResponse(
+            accessToken, expiresAtUtc, user.Id, user.Email, user.DisplayName, isPlatformAdministrator));
     }
 
     private static async Task<IResult> GetMeAsync(
         ICurrentUser currentUser,
         IUserAccountStore users,
+        IPlatformAdministratorStore platformAdministrators,
         CancellationToken cancellationToken)
     {
         if (currentUser.UserId is not Guid userId)
@@ -77,7 +82,8 @@ public static class AuthEndpoints
             return Results.Unauthorized();
         }
 
-        return Results.Ok(new AuthUserResponse(user.Id, user.Email, user.DisplayName));
+        var isPlatformAdministrator = await platformAdministrators.IsPlatformAdministratorAsync(user.Id, cancellationToken);
+        return Results.Ok(new AuthUserResponse(user.Id, user.Email, user.DisplayName, isPlatformAdministrator));
     }
 }
 
@@ -85,11 +91,16 @@ public sealed record RegisterRequest(string Email, string Password, string Displ
 
 public sealed record LoginRequest(string Email, string Password);
 
-public sealed record AuthUserResponse(Guid UserId, string Email, string DisplayName);
+public sealed record AuthUserResponse(
+    Guid UserId,
+    string Email,
+    string DisplayName,
+    bool IsPlatformAdministrator);
 
 public sealed record LoginResponse(
     string AccessToken,
     DateTimeOffset ExpiresAtUtc,
     Guid UserId,
     string Email,
-    string DisplayName);
+    string DisplayName,
+    bool IsPlatformAdministrator);

@@ -9,6 +9,7 @@
   "cancel": "Cancel",
   "loading": "Loading…",
   "signedInAs": "Signed in as {{name}}",
+  "platformAdministrator": "Platform administrator",
   "notFound": {
     "title": "Page not found",
     "body": "That page does not exist.",
