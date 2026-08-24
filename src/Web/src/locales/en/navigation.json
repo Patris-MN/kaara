@@ -1,0 +1,9 @@
+{
+  "main": {
+    "label": "Main navigation"
+  },
+  "tenants": "Organizations",
+  "workspaces": "Workspaces",
+  "projects": "Projects",
+  "tasks": "Tasks"
+}

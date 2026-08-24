@@ -1,0 +1,46 @@
+---
+description: Modular monolith boundaries and when architectural complexity may be added
+alwaysApply: true
+---
+
+# Modular Monolith Architecture
+
+This is a **single deployable ASP.NET Core application** (`src/Backend/Host/PTS.Host`)
+composed of independent bounded contexts. It is not, and must not become,
+microservices.
+
+## Bounded contexts (module = `src/Backend/Modules/<Name>/PTS.Modules.<Name>`)
+
+- **Identity** — global user identity/authentication. No tenant concept.
+- **Tenancy** — tenants (organizations) and Membership (`User` + `TenantId` + role).
+- **WorkManagement** — workspaces, projects, tasks, comments (core business domain).
+- **Entitlements** — plan/feature/limit checks derived from subscription state.
+- **Billing** — subscriptions and payment-provider integration.
+- **Storage** — tenant-aware file/object storage abstraction.
+- **PlatformAdministration** — internal operator/staff permissions, separate from
+  tenant roles.
+- **Audit** — durable audit trail, tenant-scoped where applicable.
+
+## Dependency rules (enforced by `tests/Backend/PTS.Architecture.Tests`)
+
+- A module may reference `PTS.SharedKernel` only.
+- A module must **never** reference another module's project directly.
+- `PTS.SharedKernel` must never reference a module or `PTS.Host`.
+- `PTS.Host` is the only project allowed to reference every module — it is the
+  composition root, and must stay free of business logic.
+- Cross-module interaction goes through contracts in `PTS.SharedKernel` or
+  composition in `PTS.Host`, never through a direct project reference.
+
+## Do not introduce without a documented, current need
+
+Microservices, message brokers, distributed event buses, CQRS, MediatR, or a
+generic repository abstraction layer must not be added speculatively. If one
+becomes genuinely necessary, write the reasoning in
+`docs/architecture/decisions/` as a new ADR **before** adding the dependency or
+pattern, referencing the concrete requirement that justifies it.
+
+## User-facing text
+
+Never hardcode user-facing strings in React components — see
+`60-localization-i18n.mdc`. This rule is about architecture layering, not UI text,
+but the same "don't add it until there's a real need" principle applies to both.

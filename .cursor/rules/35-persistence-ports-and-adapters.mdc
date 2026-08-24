@@ -1,0 +1,46 @@
+---
+description: Ports-and-adapters pattern for persistence across modules and the Host
+globs: src/Backend/**/*.cs,src/Backend/**/*.csproj
+alwaysApply: false
+---
+
+# Persistence: Ports in Modules, Adapters + Composition in the Host
+
+See `docs/architecture/decisions/0004-ports-and-adapters-for-persistence.md` for
+the full rationale. Summary of the rule itself:
+
+- **The single composed `AppDbContext` lives in `PTS.Host`** (currently
+  `src/Backend/Host/PTS.Host/Persistence/AppDbContext.cs`). No module defines
+  or references a `DbContext`.
+- **Modules own their entities and `IEntityTypeConfiguration<T>` classes.**
+  Modules may reference the provider-agnostic `Microsoft.EntityFrameworkCore`
+  / `Microsoft.EntityFrameworkCore.Relational` packages for this (mapping,
+  `ToTable`, `HasColumnName`, indexes, constraints).
+- **A module must never reference a concrete database provider** (`Npgsql`,
+  `Npgsql.EntityFrameworkCore.PostgreSQL`, `Microsoft.EntityFrameworkCore.SqlServer`,
+  etc.) — only `PTS.Host` may. Enforced by
+  `PTS.Architecture.Tests.ModuleBoundaryTests.Module_must_not_reference_a_concrete_database_provider`;
+  do not weaken that test to make a violation pass.
+- **Cross-module foreign keys are declared only in `AppDbContext.OnModelCreating`
+  (Host)** — e.g. `Membership.UserId → users.id`. Neither module's own
+  `IEntityTypeConfiguration<T>` may reference another module's entity type.
+- **If a module needs data owned by another module, it defines a narrow port
+  (interface) for exactly that use case** — e.g.
+  `PTS.Modules.Tenancy.IMembershipLookup` — and the Host provides the EF Core
+  adapter (e.g. `EfMembershipLookup`). This is a specific, use-case-scoped
+  port, not a generic repository — do not add `IRepository<T>` or similar (see
+  `00-modular-monolith-architecture.mdc`).
+- **Application-to-RLS bridging code (anything that opens a transaction and
+  runs `SET LOCAL app.current_tenant_id`) lives in the Host**, since it needs
+  both a concrete `DbContext`/connection and a module's tenant-resolution
+  port — it is composition, not any one module's business logic.
+
+## When adding a new module entity that needs persistence
+
+1. Define the entity + `IEntityTypeConfiguration<T>` in the module.
+2. Register it on `AppDbContext` (Host): add the `DbSet<T>`, apply the
+   configuration, and wire any cross-module FK there.
+3. If the entity is tenant-owned, add the RLS migration steps required by
+   `30-database-security-roles.mdc`.
+4. If another module needs to query it, add a narrow port to the owning
+   module and an adapter in the Host — never a cross-module entity reference.

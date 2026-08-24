@@ -1,0 +1,30 @@
+name: pts
+
+# Phase 1 scope: local PostgreSQL only, provisioned with the two-role security
+# model required by the architecture charter (migrator_role / app_role). The
+# ASP.NET Core Host and React frontend are run directly on the developer machine
+# for now (dotnet run / npm run dev) — application containers are deliberately
+# not introduced until there is a real need (see docs/architecture/decisions).
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PTS_MIGRATOR_PASSWORD: ${PTS_MIGRATOR_PASSWORD}
+      PTS_APP_PASSWORD: ${PTS_APP_PASSWORD}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - pts_postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pts_postgres_data:

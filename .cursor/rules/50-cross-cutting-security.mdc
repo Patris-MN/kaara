@@ -1,0 +1,29 @@
+---
+description: Cross-cutting security requirements for cache, storage, background jobs, and audit
+alwaysApply: true
+---
+
+# Cross-Cutting Security Requirements
+
+These apply across every module, not just Tenancy/WorkManagement:
+
+- **Cache keys must be tenant-aware.** Never cache tenant-owned data under a key
+  that doesn't include `TenantId` — a cache is not exempt from tenant isolation
+  just because it's not the primary database.
+- **Storage object keys/prefixes must be tenant-aware.** See the Storage module's
+  README for the required key-naming convention.
+- **Background jobs must explicitly carry tenant context.** A job must receive
+  its `TenantId` as an explicit parameter/payload field and re-establish tenant
+  context (including the RLS session setting) itself — it must never run in a
+  context that assumes "whatever tenant was last active" or reads tenant from
+  ambient/global mutable state.
+- **Audit records must include tenant context where applicable.** Platform-level
+  actions (not tied to a tenant) get their own audit trail, not a tenant's.
+- **Cross-tenant references are prohibited.** No entity in one tenant may hold a
+  foreign key/reference to an entity owned by a different tenant.
+
+## Platform-admin cross-tenant access
+
+Any legitimate cross-tenant read (e.g. support/ops tooling) must go through an
+explicit, audited path in the PlatformAdministration module — never by disabling
+RLS ad hoc or reusing a tenant-scoped repository/query outside its intended scope.

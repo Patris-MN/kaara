@@ -1,0 +1,32 @@
+---
+description: Separation between global User identity, tenant Membership, and platform administrator permissions
+alwaysApply: true
+---
+
+# User vs Membership vs Platform Administrator
+
+Three distinct concepts must never be merged into one entity or one permission
+check:
+
+1. **User** (Identity module) — a global account: credentials, profile, login.
+   Has no `TenantId` and no notion of "current organization".
+2. **Membership** (Tenancy module) — the link between a `User` and a `Tenant`,
+   carrying the tenant-level role(s) that apply only within that tenant. A single
+   `User` may have multiple `Membership` records (belongs to multiple tenants).
+3. **Platform Administrator** (PlatformAdministration module) — permissions for
+   internal staff who operate the SaaS itself. A platform admin is not
+   automatically a tenant member, and a tenant's admin-level `Membership` role is
+   not automatically platform-admin access.
+
+## Practical rules
+
+- Never add a `Role` or `IsAdmin` property directly on the `User` entity — roles
+  are always scoped to either a `Membership` (tenant-level) or a separate
+  platform-admin record (platform-level).
+- Authorization checks must be explicit about which of the three concepts they're
+  checking. A single "is this user an admin?" helper that doesn't specify tenant
+  vs platform scope is a bug waiting to happen.
+- Any cross-tenant visibility granted to platform administrators (e.g. for
+  support) must go through explicit, audited code paths in the
+  PlatformAdministration module — never by reusing an ordinary tenant-scoped
+  query with RLS disabled.

@@ -1,0 +1,19 @@
+{
+  "selector": "Organization",
+  "choose": "Select an organization",
+  "title": "Organizations",
+  "create": "Create organization",
+  "name": "Name",
+  "slug": "Slug",
+  "list": "Your organizations",
+  "empty": "You do not belong to an organization yet.",
+  "invitations": "Pending invitations",
+  "noInvitations": "You have no pending invitations.",
+  "accept": "Accept invitation",
+  "invite": "Invite member",
+  "inviteEmail": "Member email",
+  "errors": {
+    "duplicateSlug": "That slug is already taken.",
+    "userNotFound": "No registered user has that email."
+  }
+}

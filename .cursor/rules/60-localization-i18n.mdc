@@ -1,0 +1,49 @@
+---
+description: Localization architecture, supported languages, RTL, and translation key conventions
+globs: src/Web/**/*.ts,src/Web/**/*.tsx
+alwaysApply: false
+---
+
+# Localization (i18n)
+
+## Supported languages
+
+- `en` — English. **Fallback/default language.**
+- `ar` — Arabic. **RTL.**
+- `ku` — Kurdish Sorani. **RTL.**
+
+Adding a language later means adding `src/Web/src/locales/<code>/*.json` and
+registering the code in `src/Web/src/i18n/config.ts`. No component code should
+need to change.
+
+## Rules
+
+- **Never hardcode user-facing UI text in a React component.** All UI text comes
+  from `useTranslation()` / translation keys.
+- **Use semantic, namespaced keys** (`navigation.projects`, `common.save`,
+  `auth.signIn`) — never a full English sentence as a key.
+- **Do not duplicate components per language** (no `EnglishDashboard.tsx` /
+  `ArabicDashboard.tsx`). One component, driven by translation keys.
+- **`src/i18n/LanguageProvider.tsx` is the only place** that syncs
+  `document.documentElement.lang`/`dir` with the active language. Don't
+  read/write those attributes elsewhere.
+- **Language switching must not reload the page** — i18next supports runtime
+  switching via `i18n.changeLanguage()`; use it, don't force a reload.
+- **Don't mix localization logic with tenant authorization logic.** The
+  `LanguageProvider`/`useTranslation` layer must have no awareness of tenants,
+  membership, or auth state, and vice versa.
+
+## Business data is never translated
+
+Project names, task titles, comments, descriptions, and workspace names are
+user-entered business content. Store and display it exactly as entered —
+**never** run it through translation resources or machine translation, regardless
+of the active UI locale. Only UI chrome (labels, buttons, navigation, messages)
+goes through i18next.
+
+## Future: persisted user preference
+
+The language a user selects is designed to eventually be persisted as part of
+that user's preferences via the Identity module (once it exists). Until then,
+`i18next-browser-languagedetector` persists the choice to `localStorage` only —
+don't build a fake "server preference" endpoint ahead of that real need.

@@ -1,0 +1,7 @@
+{
+  "title": "Workspaces",
+  "create": "Create workspace",
+  "name": "Workspace name",
+  "list": "Workspaces",
+  "empty": "This organization has no workspaces yet."
+}

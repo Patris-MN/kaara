@@ -1,0 +1,38 @@
+{
+  "app": {
+    "name": "Task and Project Management SaaS"
+  },
+  "language": {
+    "label": "Language"
+  },
+  "save": "Save",
+  "cancel": "Cancel",
+  "loading": "Loading…",
+  "signedInAs": "Signed in as {{name}}",
+  "notFound": {
+    "title": "Page not found",
+    "body": "That page does not exist.",
+    "home": "Back to the application"
+  },
+  "errors": {
+    "network": "The server could not be reached. Try again.",
+    "unauthenticated": "Your session has expired. Sign in again.",
+    "forbidden": "You do not have access to that resource.",
+    "request_failed": "The request could not be completed.",
+    "invalid_email": "Enter a valid email address.",
+    "invalid_password": "Enter a password of at least 8 characters.",
+    "invalid_display_name": "Enter a display name.",
+    "invalid_registration": "Registration could not be completed.",
+    "email_already_registered": "That email is already registered.",
+    "invalid_credentials": "Email or password is incorrect.",
+    "invalid_tenant": "Enter a valid organization name and slug.",
+    "duplicate_slug": "That organization slug is already taken.",
+    "invite_forbidden": "You cannot invite members for this organization.",
+    "user_not_found": "No user exists with that email.",
+    "invitation_not_found": "That invitation is not available.",
+    "invalid_workspace": "Enter a workspace name.",
+    "invalid_project": "Enter a project name.",
+    "workspace_not_found": "That workspace was not found.",
+    "tenant_access_denied": "You do not have access to that organization."
+  }
+}

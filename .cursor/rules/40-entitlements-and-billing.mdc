@@ -1,0 +1,36 @@
+---
+description: Separation between Entitlements (feature checks) and Billing (payment provider integration)
+alwaysApply: true
+---
+
+# Entitlements & Billing Separation
+
+**Billing** owns subscription lifecycle and all direct integration with a payment
+provider (e.g. Stripe): webhooks, invoices, payment methods.
+
+**Entitlements** owns the answer to "what can this tenant do/use right now?" —
+plan limits, feature flags, seat counts — derived *from* subscription state, but
+without talking to the payment provider itself.
+
+## Why they're separate modules
+
+- Feature-check code (called frequently, on hot paths across the app) must never
+  depend on payment-provider SDKs, network calls, or webhook-processing logic.
+- Payment-provider outages/changes should never be able to break unrelated
+  feature-flag checks.
+- This keeps Billing's provider-specific concerns (webhooks, retries, PCI-adjacent
+  concerns) isolated from the rest of the system.
+
+## Rule
+
+`PTS.Modules.Entitlements` must not reference `PTS.Modules.Billing` directly (or
+vice versa). When Billing needs to communicate a subscription-state change that
+affects entitlements, do it through a contract in `PTS.SharedKernel` or
+composition in `PTS.Host` — not a direct project reference. This is also enforced
+by the general module-boundary rule in `00-modular-monolith-architecture.mdc`.
+
+## Phase 1 status
+
+Both modules are currently empty scaffolding. Do not implement subscriptions,
+Stripe integration, or entitlement checks until a later phase explicitly asks for
+it.

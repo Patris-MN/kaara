@@ -1,0 +1,52 @@
+---
+description: Tenant isolation, Row-Level Security, and where TenantId is allowed to come from
+alwaysApply: true
+---
+
+# Multi-Tenancy & Row-Level Security
+
+This is a strict multi-tenant system. Every tenant-owned database record belongs
+to exactly one `TenantId`. Cross-tenant references are prohibited.
+
+## Never trust `TenantId` from the client
+
+`TenantId` must never be read directly from:
+
+- HTTP headers
+- request body
+- URL / route values
+- query parameters
+- frontend state
+
+The backend establishes tenant context **only** after authenticating the user and
+verifying an active `Membership` (Tenancy module) linking that user to the tenant
+they claim to act in. That server-established value is the single source of truth
+for the rest of the request.
+
+## Defense in depth, not either/or
+
+- **PostgreSQL Row-Level Security (RLS) is mandatory** on every tenant-owned
+  table. Policies are created via migrations run by `migrator_role`.
+- Application-level `WHERE TenantId = ...` filtering is still required, but is
+  **not sufficient on its own** — a missing `WHERE` clause in application code
+  must not be able to leak cross-tenant data if RLS is correctly configured.
+- The intended mechanism: the app sets a session-scoped setting (e.g.
+  `SET app.current_tenant_id = '<tenant-guid>'`) after resolving tenant context,
+  and RLS policies reference that setting via `current_setting(...)`. Do not
+  design RLS policies that can be bypassed by omitting the session variable.
+
+## Cross-cutting tenant-awareness
+
+- Background jobs must explicitly carry and re-establish tenant context; a job
+  must never infer tenant from ambient/global state.
+- Cache keys must include `TenantId`.
+- Storage object keys/prefixes must include `TenantId`.
+- Audit records must include tenant context where applicable.
+
+## Enterprise isolation (future-proofing)
+
+The default isolation strategy is a shared schema with RLS. Larger/enterprise
+tenants may later move to a dedicated schema or database. Design tenant-context
+resolution (Tenancy module) so this choice is a per-tenant implementation detail
+that other modules don't need to know about — don't hardcode "shared schema" as an
+implicit assumption outside the Tenancy module.

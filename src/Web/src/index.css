@@ -1,0 +1,44 @@
+:root {
+  --text: #1f2933;
+  --text-h: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+
+  font: 16px/145% var(--sans);
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #d1d5db;
+    --text-h: #f3f4f6;
+    --bg: #16171d;
+    --border: #2e303a;
+  }
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+}
+
+h1 {
+  font-family: var(--sans);
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/*
+ * Direction-aware layout: components should rely on logical CSS properties
+ * (margin-inline, padding-inline, text-align: start/end, etc.) rather than
+ * left/right, so RTL locales (ar, ku) render correctly without per-locale
+ * overrides. See .cursor/rules/60-localization-i18n.mdc.
+ */

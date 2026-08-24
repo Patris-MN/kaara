@@ -1,0 +1,40 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Backend/" />
+  <Folder Name="/src/Backend/Host/">
+    <Project Path="src/Backend/Host/PTS.Host/PTS.Host.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Modules/" />
+  <Folder Name="/src/Backend/Modules/Audit/">
+    <Project Path="src/Backend/Modules/Audit/PTS.Modules.Audit/PTS.Modules.Audit.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Modules/Billing/">
+    <Project Path="src/Backend/Modules/Billing/PTS.Modules.Billing/PTS.Modules.Billing.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Modules/Entitlements/">
+    <Project Path="src/Backend/Modules/Entitlements/PTS.Modules.Entitlements/PTS.Modules.Entitlements.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Modules/Identity/">
+    <Project Path="src/Backend/Modules/Identity/PTS.Modules.Identity/PTS.Modules.Identity.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Modules/PlatformAdministration/">
+    <Project Path="src/Backend/Modules/PlatformAdministration/PTS.Modules.PlatformAdministration/PTS.Modules.PlatformAdministration.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Modules/Storage/">
+    <Project Path="src/Backend/Modules/Storage/PTS.Modules.Storage/PTS.Modules.Storage.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Modules/Tenancy/">
+    <Project Path="src/Backend/Modules/Tenancy/PTS.Modules.Tenancy/PTS.Modules.Tenancy.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Modules/WorkManagement/">
+    <Project Path="src/Backend/Modules/WorkManagement/PTS.Modules.WorkManagement/PTS.Modules.WorkManagement.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/Shared/">
+    <Project Path="src/Backend/Shared/PTS.SharedKernel/PTS.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Backend/">
+    <Project Path="tests/Backend/PTS.Architecture.Tests/PTS.Architecture.Tests.csproj" />
+    <Project Path="tests/Backend/PTS.IntegrationTests/PTS.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

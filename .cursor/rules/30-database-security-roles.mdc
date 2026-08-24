@@ -1,0 +1,42 @@
+---
+description: PostgreSQL role separation between migrations and the running application
+globs: infra/docker/**,src/Backend/**/*.cs,**/*.sql
+alwaysApply: false
+---
+
+# Database Security Roles
+
+Two PostgreSQL roles exist, provisioned by
+`infra/docker/postgres/init/01-create-roles.sh` (see also
+`infra/docker/postgres/init/templates/roles.template.sql`):
+
+- **`migrator_role`** — schema owner. Performs migrations, DDL, schema changes,
+  and RLS policy creation. Used only by developer tooling / CI migration jobs
+  (e.g. `dotnet ef database update`).
+- **`app_role`** — used by the running ASP.NET Core application at runtime.
+
+## `app_role` must never
+
+- Own the database or any schema.
+- Have `BYPASSRLS`.
+- Have DDL rights (`CREATE`, `ALTER`, `DROP`) beyond what a migration explicitly
+  grants per table (`SELECT`/`INSERT`/`UPDATE`/`DELETE`).
+- Be a superuser.
+
+## Never run the application as `migrator_role` or a PostgreSQL superuser
+
+The connection string used by `PTS.Host` (and any future worker process) must use
+`app_role` credentials only. Migration tooling uses `migrator_role` credentials via
+a separate connection string/config, never the application's runtime config.
+
+## When adding a new tenant-owned table
+
+A migration authored to run as `migrator_role` must, at minimum:
+
+1. Create the table with a non-nullable `TenantId` column.
+2. `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY;`
+3. `ALTER TABLE <table> FORCE ROW LEVEL SECURITY;` (so even the table owner is
+   subject to the policy).
+4. Create a policy scoping rows to `current_setting('app.current_tenant_id')`.
+5. `GRANT SELECT, INSERT, UPDATE, DELETE ON <table> TO app_role;` — explicitly,
+   never via a blanket `ALL ON ALL TABLES` grant.

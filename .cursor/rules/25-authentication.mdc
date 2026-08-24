@@ -1,0 +1,25 @@
+---
+description: Authentication identity comes only from a validated principal
+globs: src/Backend/**/*.cs
+alwaysApply: false
+---
+
+# Authentication & identity
+
+- The authenticated `UserId` is taken only from `ICurrentUser`, which is
+  populated from a cryptographically validated principal (JWT Bearer:
+  signature, issuer, audience, lifetime). Never from body, query, route,
+  or unvalidated headers.
+- `ITenantRlsSessionFactory.OpenAsync` must not accept a caller-supplied
+  `userId`. Tenant id is a selection hint and still requires an Active
+  Membership.
+- Do not put tenant roles in JWT claims. Membership is database-backed.
+- Passwords are hashed with ASP.NET Core `PasswordHasher<User>`. Never
+  store or log plaintext passwords.
+- PostgreSQL `app.current_user_id` and `app.current_tenant_id` must be
+  SET LOCAL (transaction-scoped) so pooled connections cannot leak
+  identity. Set `current_user_id` before membership lookup; set
+  `current_tenant_id` only after membership succeeds.
+- `memberships` RLS is `user_id = current_user_id`, not tenant id, so
+  bootstrap is not circular.
+- Platform administration stays out of User and Membership.

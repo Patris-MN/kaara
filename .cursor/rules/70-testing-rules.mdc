@@ -1,0 +1,37 @@
+---
+description: Testing conventions for the backend and frontend
+alwaysApply: true
+---
+
+# Testing Rules
+
+## Backend (`tests/Backend/`)
+
+- `PTS.Architecture.Tests` mechanically enforces module boundaries (see
+  `00-modular-monolith-architecture.mdc`) via reflection over compiled
+  assemblies — no third-party architecture-testing library is used unless a
+  documented need arises (per the "don't add dependencies speculatively" rule).
+  **Do not weaken or delete these tests to make a boundary violation pass** —
+  fix the dependency direction instead.
+- Once tenant-owned tables/RLS policies exist, add integration tests that prove:
+  a query executed under `app_role` with tenant context A cannot read/write rows
+  belonging to tenant B, even if application code forgets a `WHERE TenantId = ...`
+  clause. This is the concrete test of the "RLS is mandatory, app filtering alone
+  is not sufficient" rule.
+- Unit tests for a module belong under a `PTS.Modules.<Name>.Tests` project once
+  that module has real behavior to test — don't create empty test projects ahead
+  of implementation.
+
+## Frontend (`src/Web/`)
+
+- Use `vitest` (already configured in `vite.config.ts`). Run with `npm run test`.
+- Pure localization/utility logic (e.g. `src/i18n/direction.ts`) must have unit
+  tests colocated as `*.test.ts` next to the source file.
+- Do not snapshot-test translated strings directly (they will legitimately change
+  per locale); test behavior (e.g. "Arabic resolves to rtl"), not exact copy.
+
+## General
+
+- Don't claim a test "passes" without having actually run it in this workspace.
+  If something can't be verified yet (e.g. no database is running), say so
+  explicitly rather than assuming success.
