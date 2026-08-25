@@ -1,7 +1,15 @@
 {
   "title": "Workspaces",
+  "eyebrow": "Organization workspace",
+  "description": "Create focused spaces for teams, departments, or product areas.",
+  "workspaceCount": "workspaces",
   "create": "Create workspace",
+  "createDescription": "Group related projects and the people working on them.",
   "name": "Workspace name",
+  "namePlaceholder": "Product & Engineering",
   "list": "Workspaces",
+  "listDescription": "Open a workspace to manage its projects.",
+  "emptyTitle": "No workspaces yet",
+  "openProjects": "Open projects",
   "empty": "This organization has no workspaces yet."
 }

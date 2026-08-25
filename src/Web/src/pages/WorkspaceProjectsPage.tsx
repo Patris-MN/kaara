@@ -75,26 +75,77 @@ export function WorkspaceProjectsPage() {
   }
 
   return (
-    <section className="stack">
-      <h1>{t("projects:title")}</h1>
+    <section className="app-page">
+      <header className="page-heading">
+        <div>
+          <p className="page-eyebrow">{t("projects:eyebrow")}</p>
+          <h1>{t("projects:title")}</h1>
+          <p>{t("projects:description")}</p>
+        </div>
+        <div className="page-stat">
+          <strong>{projects.length}</strong>
+          <span>{t("projects:projectCount")}</span>
+        </div>
+      </header>
       {error ? <StatusBanner tone="error">{error}</StatusBanner> : null}
-      <form className="panel" onSubmit={onCreate}>
-        <h2>{t("projects:create")}</h2>
-        <Field id="project-name" label={t("projects:name")}>
-          <input id="project-name" required value={name} onChange={(event) => setName(event.target.value)} />
-        </Field>
-        <button type="submit" disabled={busy}>
-          {busy ? t("common:loading") : t("projects:create")}
-        </button>
+
+      <form className="surface-card form-card form-card-horizontal" onSubmit={onCreate}>
+        <div className="card-heading">
+          <span className="card-icon card-icon-purple" aria-hidden="true">+</span>
+          <div>
+            <h2>{t("projects:create")}</h2>
+            <p>{t("projects:createDescription")}</p>
+          </div>
+        </div>
+        <div className="inline-create">
+          <Field id="project-name" label={t("projects:name")}>
+            <input
+              id="project-name"
+              required
+              placeholder={t("projects:namePlaceholder")}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </Field>
+          <button className="primary-action" type="submit" disabled={busy}>
+            <span aria-hidden="true">+</span>
+            {busy ? t("common:loading") : t("projects:create")}
+          </button>
+        </div>
       </form>
-      <div className="panel">
-        <h2>{t("projects:list")}</h2>
+
+      <div className="surface-card entity-section">
+        <div className="card-heading card-heading-between">
+          <div>
+            <h2>{t("projects:list")}</h2>
+            <p>{t("projects:listDescription")}</p>
+          </div>
+          <span className="count-badge">{projects.length}</span>
+        </div>
         {projects.length === 0 ? (
-          <p>{t("projects:empty")}</p>
+          <div className="empty-state">
+            <span className="empty-state-icon" aria-hidden="true">✓</span>
+            <strong>{t("projects:emptyTitle")}</strong>
+            <p>{t("projects:empty")}</p>
+          </div>
         ) : (
-          <ul className="plain-list">
-            {projects.map((project) => (
-              <li key={project.projectId}>{project.name}</li>
+          <ul className="project-card-grid">
+            {projects.map((project, index) => (
+              <li className="project-card" key={project.projectId}>
+                <div className={`project-accent project-accent-${(index % 3) + 1}`} />
+                <div className="project-card-top">
+                  <span className="project-symbol" aria-hidden="true">
+                    {project.name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="status-pill">{t("projects:active")}</span>
+                </div>
+                <strong>{project.name}</strong>
+                <p>{t("projects:projectDescription")}</p>
+                <div className="project-card-footer">
+                  <span>{t("projects:readyForTasks")}</span>
+                  <span aria-hidden="true">•••</span>
+                </div>
+              </li>
             ))}
           </ul>
         )}

@@ -29,6 +29,7 @@ describe("frontend vertical slice", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     clearSession();
+    localStorage.removeItem("pts.rememberedEmail");
     cleanup();
   });
 
@@ -46,11 +47,26 @@ describe("frontend vertical slice", () => {
     );
     const user = userEvent.setup();
     renderApp("/login");
-    await user.type(screen.getByLabelText(enAuth.email), "a@example.test");
+    await user.type(screen.getByLabelText(enAuth.businessEmail), "a@example.test");
     await user.type(screen.getByLabelText(enAuth.password), "wrong-password");
     await user.click(screen.getAllByRole("button", { name: enAuth.signIn })[0]!);
     expect((await screen.findByRole("alert")).textContent).toContain(enAuth.errors.invalidCredentials);
     expect(screen.queryByLabelText(enTenants.selector)).toBeNull();
+  });
+
+  it("validates required credentials and exposes an accessible password toggle", async () => {
+    const user = userEvent.setup();
+    renderApp("/login");
+
+    await user.click(screen.getByRole("button", { name: enAuth.signIn }));
+    expect(screen.getByText(enAuth.errors.invalidEmail)).toBeTruthy();
+    expect(screen.getByText(enAuth.errors.passwordRequired)).toBeTruthy();
+
+    const password = screen.getByLabelText(enAuth.password);
+    expect(password.getAttribute("type")).toBe("password");
+    await user.click(screen.getByRole("button", { name: enAuth.showPassword }));
+    expect(password.getAttribute("type")).toBe("text");
+    expect(screen.getByRole("button", { name: enAuth.hidePassword })).toBeTruthy();
   });
 
   it("establishes the authenticated shell after a valid login and clears it on logout", async () => {
@@ -66,6 +82,7 @@ describe("frontend vertical slice", () => {
               userId: "11111111-1111-1111-1111-111111111111",
               email: "a@example.test",
               displayName: "User A",
+              isPlatformAdministrator: false,
             }),
             { status: 200 },
           );
@@ -81,7 +98,7 @@ describe("frontend vertical slice", () => {
     );
     const user = userEvent.setup();
     renderApp("/login");
-    await user.type(screen.getByLabelText(enAuth.email), "a@example.test");
+    await user.type(screen.getByLabelText(enAuth.businessEmail), "a@example.test");
     await user.type(screen.getByLabelText(enAuth.password), "correct-horse");
     await user.click(screen.getAllByRole("button", { name: enAuth.signIn })[0]!);
     expect(await screen.findByLabelText(enTenants.selector)).toBeTruthy();

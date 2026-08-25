@@ -1,7 +1,17 @@
 {
   "title": "Projects",
+  "eyebrow": "Workspace projects",
+  "description": "Turn team priorities into organized, trackable project work.",
+  "projectCount": "projects",
   "create": "Create project",
+  "createDescription": "Start a new stream of work in this workspace.",
   "name": "Project name",
+  "namePlaceholder": "Website redesign",
   "list": "Projects",
+  "listDescription": "Active work organized inside this workspace.",
+  "emptyTitle": "Create your first project",
+  "active": "Active",
+  "projectDescription": "Structured project workspace ready for collaborative planning.",
+  "readyForTasks": "Ready for tasks",
   "empty": "This workspace has no projects yet."
 }

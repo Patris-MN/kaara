@@ -94,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userId: result.userId,
       email: result.email,
       displayName: result.displayName,
+      isPlatformAdministrator: result.isPlatformAdministrator,
     });
   }, []);
 

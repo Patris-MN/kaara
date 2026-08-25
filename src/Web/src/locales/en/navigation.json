@@ -2,6 +2,8 @@
   "main": {
     "label": "Main navigation"
   },
+  "workspace": "Workspace",
+  "soon": "Soon",
   "tenants": "Organizations",
   "workspaces": "Workspaces",
   "projects": "Projects",
