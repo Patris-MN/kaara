@@ -9,6 +9,7 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { TenantWorkspacesPage } from "./pages/TenantWorkspacesPage";
 import { TenantsPage } from "./pages/TenantsPage";
+import { ProjectTasksPage } from "./pages/ProjectTasksPage";
 import { WorkspaceProjectsPage } from "./pages/WorkspaceProjectsPage";
 import "./App.css";
 
@@ -32,6 +33,10 @@ function App() {
           <Route
             path="tenants/:tenantId/workspaces/:workspaceId"
             element={<WorkspaceProjectsPage />}
+          />
+          <Route
+            path="tenants/:tenantId/workspaces/:workspaceId/projects/:projectId/*"
+            element={<ProjectTasksPage />}
           />
         </Route>
       </Route>

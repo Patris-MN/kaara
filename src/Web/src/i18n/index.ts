@@ -4,20 +4,29 @@ import { initReactI18next } from "react-i18next";
 
 import enAuth from "../locales/en/auth.json";
 import enCommon from "../locales/en/common.json";
+import enMembers from "../locales/en/members.json";
 import enNavigation from "../locales/en/navigation.json";
 import enProjects from "../locales/en/projects.json";
+import enNotifications from "../locales/en/notifications.json";
+import enTasks from "../locales/en/tasks.json";
 import enTenants from "../locales/en/tenants.json";
 import enWorkspaces from "../locales/en/workspaces.json";
 import arAuth from "../locales/ar/auth.json";
 import arCommon from "../locales/ar/common.json";
+import arMembers from "../locales/ar/members.json";
 import arNavigation from "../locales/ar/navigation.json";
 import arProjects from "../locales/ar/projects.json";
+import arNotifications from "../locales/ar/notifications.json";
+import arTasks from "../locales/ar/tasks.json";
 import arTenants from "../locales/ar/tenants.json";
 import arWorkspaces from "../locales/ar/workspaces.json";
 import kuAuth from "../locales/ku/auth.json";
 import kuCommon from "../locales/ku/common.json";
+import kuMembers from "../locales/ku/members.json";
 import kuNavigation from "../locales/ku/navigation.json";
 import kuProjects from "../locales/ku/projects.json";
+import kuNotifications from "../locales/ku/notifications.json";
+import kuTasks from "../locales/ku/tasks.json";
 import kuTenants from "../locales/ku/tenants.json";
 import kuWorkspaces from "../locales/ku/workspaces.json";
 
@@ -31,6 +40,9 @@ const resources = {
     tenants: enTenants,
     workspaces: enWorkspaces,
     projects: enProjects,
+    members: enMembers,
+    tasks: enTasks,
+    notifications: enNotifications,
   },
   ar: {
     common: arCommon,
@@ -39,6 +51,9 @@ const resources = {
     tenants: arTenants,
     workspaces: arWorkspaces,
     projects: arProjects,
+    members: arMembers,
+    tasks: arTasks,
+    notifications: arNotifications,
   },
   ku: {
     common: kuCommon,
@@ -47,6 +62,9 @@ const resources = {
     tenants: kuTenants,
     workspaces: kuWorkspaces,
     projects: kuProjects,
+    members: kuMembers,
+    tasks: kuTasks,
+    notifications: kuNotifications,
   },
 } as const;
 

@@ -17,7 +17,17 @@ export const RTL_LOCALES: ReadonlySet<SupportedLocale> = new Set(["ar", "ku"]);
  * Translation resource namespaces. Keep namespaces small and topic-scoped
  * (common, navigation, auth, ...) rather than one giant catalogue per locale.
  */
-export const NAMESPACES = ["common", "navigation", "auth", "tenants", "workspaces", "projects"] as const;
+export const NAMESPACES = [
+  "common",
+  "navigation",
+  "auth",
+  "tenants",
+  "workspaces",
+  "projects",
+  "members",
+  "tasks",
+  "notifications",
+] as const;
 
 export type Namespace = (typeof NAMESPACES)[number];
 

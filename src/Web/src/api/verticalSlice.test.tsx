@@ -8,6 +8,7 @@ import { AuthProvider } from "../auth/AuthProvider";
 import App from "../App";
 import { clearSession } from "./session";
 import { getDirectionForLocale } from "../i18n/direction";
+import { TenantDirectoryProvider } from "../tenancy/TenantDirectoryProvider";
 import enAuth from "../locales/en/auth.json";
 import arAuth from "../locales/ar/auth.json";
 import kuAuth from "../locales/ku/auth.json";
@@ -19,7 +20,9 @@ function renderApp(path = "/login") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <AuthProvider>
-        <App />
+        <TenantDirectoryProvider>
+          <App />
+        </TenantDirectoryProvider>
       </AuthProvider>
     </MemoryRouter>,
   );

@@ -1,0 +1,18 @@
+{
+  "title": "الإشعارات",
+  "taskAssigned": "تم تعيين مهمة لك",
+  "markRead": "تعليم كمقروء",
+  "empty": "ليست لديك إشعارات.",
+  "types": {
+    "TaskAssigned": "تم تعيين مهمة لك",
+    "TaskReassigned": "أُعيد تعيين مهمة",
+    "TaskCommentAdded": "أُضيف تعليق",
+    "TaskPriorityChanged": "تغيّرت أولوية المهمة",
+    "TaskDeadlineChanged": "تغيّر موعد المهمة",
+    "TaskStatusChanged": "تغيّرت حالة المهمة",
+    "TaskTagChanged": "تغيّرت وسوم المهمة",
+    "TaskUpdated": "حُدّثت مهمة",
+    "TaskClosed": "أُغلقت مهمة",
+    "TaskReopened": "أُعيد فتح مهمة"
+  }
+}

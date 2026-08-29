@@ -1,0 +1,24 @@
+{
+  "title": "Organization members",
+  "description": "Review membership status and assign workspace access.",
+  "empty": "No members are available.",
+  "roles": {
+    "owner": "Owner",
+    "admin": "Admin",
+    "member": "Member"
+  },
+  "status": {
+    "invited": "Invited",
+    "active": "Active",
+    "suspended": "Suspended"
+  },
+  "access": {
+    "none": "None",
+    "view": "View",
+    "edit": "Edit"
+  },
+  "accessLabel": "{{member}} access to {{workspace}}",
+  "inactiveAccess": "Workspace access is usable only by Active Members.",
+  "implicitAccess": "Owners and Admins have implicit access to every workspace.",
+  "noWorkspaces": "Create a workspace before assigning member access."
+}

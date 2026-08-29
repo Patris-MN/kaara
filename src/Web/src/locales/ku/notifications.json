@@ -1,0 +1,18 @@
+{
+  "title": "ئاگادارکردنەوەکان",
+  "taskAssigned": "ئەرکێک پێدراویت",
+  "markRead": "وەک خوێندراوە نیشان بکە",
+  "empty": "هیچ ئاگادارکردنەوەیەکت نییە.",
+  "types": {
+    "TaskAssigned": "ئەرکێک پێدراویت",
+    "TaskReassigned": "ئەرکێک دووبارە سپێردرا",
+    "TaskCommentAdded": "لێدوانێک زیادکرا",
+    "TaskPriorityChanged": "ئەولەویەتی ئەرک گۆڕدرا",
+    "TaskDeadlineChanged": "وادەی ئەرک گۆڕدرا",
+    "TaskStatusChanged": "دۆخی ئەرک گۆڕدرا",
+    "TaskTagChanged": "تاگەکانی ئەرک گۆڕدران",
+    "TaskUpdated": "ئەرکێک نوێکرایەوە",
+    "TaskClosed": "ئەرکێک داخرا",
+    "TaskReopened": "ئەرکێک دووبارە کرایەوە"
+  }
+}

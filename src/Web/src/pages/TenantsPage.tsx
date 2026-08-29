@@ -1,49 +1,23 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { acceptInvitation, createTenant, listInvitations, listTenants } from "../api/client";
+import { acceptInvitation, createTenant } from "../api/client";
 import { isApiError, translationKeyForApiError } from "../api/errors";
 import { writeSelectedTenantId } from "../api/session";
-import type { TenantMembership } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { Field, StatusBanner } from "../components/Ui";
+import { useTenantDirectory } from "../tenancy/TenantDirectoryProvider";
 
 export function TenantsPage() {
   const { t } = useTranslation(["tenants", "common"]);
   const { token, user } = useAuth();
+  const { tenants, invitations, refresh, markInvitationAccepted } = useTenantDirectory();
   const navigate = useNavigate();
-  const [tenants, setTenants] = useState<TenantMembership[]>([]);
-  const [invitations, setInvitations] = useState<TenantMembership[]>([]);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  async function refresh(signal?: AbortSignal) {
-    if (!token) {
-      return;
-    }
-    const [nextTenants, nextInvitations] = await Promise.all([
-      listTenants(token),
-      listInvitations(token),
-    ]);
-    if (signal?.aborted) {
-      return;
-    }
-    setTenants(nextTenants);
-    setInvitations(nextInvitations);
-  }
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void refresh(controller.signal).catch((cause: unknown) => {
-      if (!controller.signal.aborted) {
-        setError(t(translationKeyForApiError(cause), { ns: "common" }));
-      }
-    });
-    return () => controller.abort();
-  }, [token, t]);
 
   async function onCreate(event: FormEvent) {
     event.preventDefault();
@@ -79,6 +53,7 @@ export function TenantsPage() {
     try {
       await acceptInvitation(token, tenantId);
       writeSelectedTenantId(user.userId, tenantId);
+      markInvitationAccepted(tenantId);
       await refresh();
       navigate(`/app/tenants/${tenantId}`);
     } catch (cause) {

@@ -7,14 +7,17 @@ import "./index.css";
 import App from "./App.tsx";
 import { AuthProvider } from "./auth/AuthProvider.tsx";
 import { LanguageProvider } from "./i18n/LanguageProvider.tsx";
+import { TenantDirectoryProvider } from "./tenancy/TenantDirectoryProvider.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <LanguageProvider>
       <AuthProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
+        <TenantDirectoryProvider>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+        </TenantDirectoryProvider>
       </AuthProvider>
     </LanguageProvider>
   </StrictMode>,

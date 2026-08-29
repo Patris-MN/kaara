@@ -10,6 +10,8 @@
   "list": "Workspaces",
   "listDescription": "Open a workspace to manage its projects.",
   "emptyTitle": "No workspaces yet",
+  "emptyAssignedTitle": "No workspaces assigned",
   "openProjects": "Open projects",
-  "empty": "This organization has no workspaces yet."
+  "empty": "This organization has no workspaces yet.",
+  "emptyAssigned": "You do not have access to any workspaces in this organization."
 }

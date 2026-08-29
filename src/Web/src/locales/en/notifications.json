@@ -1,0 +1,18 @@
+{
+  "title": "Notifications",
+  "taskAssigned": "A task was assigned to you",
+  "markRead": "Mark read",
+  "empty": "You have no notifications.",
+  "types": {
+    "TaskAssigned": "A task was assigned to you",
+    "TaskReassigned": "A task was reassigned",
+    "TaskCommentAdded": "A comment was added",
+    "TaskPriorityChanged": "Task priority changed",
+    "TaskDeadlineChanged": "Task deadline changed",
+    "TaskStatusChanged": "Task status changed",
+    "TaskTagChanged": "Task tags changed",
+    "TaskUpdated": "A task was updated",
+    "TaskClosed": "A task was closed",
+    "TaskReopened": "A task was reopened"
+  }
+}

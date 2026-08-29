@@ -2,25 +2,42 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { createWorkspace, inviteMember, listTenants, listWorkspaces } from "../api/client";
+import {
+  createWorkspace,
+  inviteMember,
+  listMembers,
+  listWorkspaceAccess,
+  listWorkspaces,
+  removeWorkspaceAccess,
+  setWorkspaceAccess,
+} from "../api/client";
 import { isApiError, translationKeyForApiError } from "../api/errors";
 import { shouldApplyResponse } from "../api/requestIdentity";
-import type { TenantMembership, Workspace } from "../api/types";
+import type { TenantMember, Workspace, WorkspaceAccessLevel } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { Field, StatusBanner } from "../components/Ui";
+import { useTenantDirectory } from "../tenancy/TenantDirectoryProvider";
+
+type AccessChoice = "None" | WorkspaceAccessLevel;
+type AccessByMember = Record<string, Record<string, WorkspaceAccessLevel>>;
 
 export function TenantWorkspacesPage() {
-  const { t } = useTranslation(["workspaces", "tenants", "common"]);
+  const { t } = useTranslation(["workspaces", "tenants", "members", "common"]);
   const { tenantId } = useParams();
   const { token } = useAuth();
+  const { tenants } = useTenantDirectory();
   const requestId = useRef(0);
-  const [membership, setMembership] = useState<TenantMembership | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [members, setMembers] = useState<TenantMember[]>([]);
+  const [accessByMember, setAccessByMember] = useState<AccessByMember>({});
   const [name, setName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const membership = tenants.find((item) => item.tenantId === tenantId) ?? null;
+  const canManage = membership?.role === "Owner" || membership?.role === "Admin";
 
   useEffect(() => {
     if (!token || !tenantId) {
@@ -29,22 +46,51 @@ export function TenantWorkspacesPage() {
     const current = requestId.current + 1;
     requestId.current = current;
     setWorkspaces([]);
-    setMembership(null);
+    setMembers([]);
+    setAccessByMember({});
     setForbidden(false);
     setError(null);
     const controller = new AbortController();
 
     void (async () => {
       try {
-        const [tenantList, workspaceList] = await Promise.all([
-          listTenants(token),
-          listWorkspaces(token, tenantId, controller.signal),
-        ]);
+        const workspaceList = await listWorkspaces(token, tenantId, controller.signal);
         if (!shouldApplyResponse(current, requestId.current)) {
           return;
         }
-        setMembership(tenantList.find((item) => item.tenantId === tenantId) ?? null);
         setWorkspaces(workspaceList);
+
+        if (!canManage) {
+          return;
+        }
+
+        const memberList = await listMembers(token, tenantId, controller.signal);
+        if (!shouldApplyResponse(current, requestId.current)) {
+          return;
+        }
+        setMembers(memberList);
+
+        const activeMembers = memberList.filter(
+          (member) => member.role === "Member" && member.status === "Active",
+        );
+        const accessEntries = await Promise.all(
+          activeMembers.map(async (member) => {
+            const access = await listWorkspaceAccess(
+              token,
+              tenantId,
+              member.membershipId,
+              controller.signal,
+            );
+            return [
+              member.membershipId,
+              Object.fromEntries(access.map((item) => [item.workspaceId, item.accessLevel])),
+            ] as const;
+          }),
+        );
+        if (!shouldApplyResponse(current, requestId.current)) {
+          return;
+        }
+        setAccessByMember(Object.fromEntries(accessEntries));
       } catch (cause) {
         if (!shouldApplyResponse(current, requestId.current)) {
           return;
@@ -52,6 +98,7 @@ export function TenantWorkspacesPage() {
         if (isApiError(cause) && cause.status === 403) {
           setForbidden(true);
           setWorkspaces([]);
+          setMembers([]);
         } else {
           setError(t(translationKeyForApiError(cause), { ns: "common" }));
         }
@@ -59,7 +106,7 @@ export function TenantWorkspacesPage() {
     })();
 
     return () => controller.abort();
-  }, [token, tenantId, t]);
+  }, [token, tenantId, canManage, t]);
 
   async function onCreate(event: FormEvent) {
     event.preventDefault();
@@ -89,6 +136,10 @@ export function TenantWorkspacesPage() {
     try {
       await inviteMember(token, tenantId, inviteEmail);
       setInviteEmail("");
+      if (canManage) {
+        const memberList = await listMembers(token, tenantId);
+        setMembers(memberList);
+      }
     } catch (cause) {
       setError(
         isApiError(cause) && cause.code === "user_not_found"
@@ -100,7 +151,47 @@ export function TenantWorkspacesPage() {
     }
   }
 
-  const canInvite = membership?.role === "Owner" || membership?.role === "Admin";
+  async function onAccessChange(
+    membershipId: string,
+    workspaceId: string,
+    next: AccessChoice,
+  ) {
+    if (!token || !tenantId || busy) {
+      return;
+    }
+    const previous = accessByMember[membershipId]?.[workspaceId];
+    setAccessByMember((current) => {
+      const memberAccess = { ...(current[membershipId] ?? {}) };
+      if (next === "None") {
+        delete memberAccess[workspaceId];
+      } else {
+        memberAccess[workspaceId] = next;
+      }
+      return { ...current, [membershipId]: memberAccess };
+    });
+    setBusy(true);
+    setError(null);
+    try {
+      if (next === "None") {
+        await removeWorkspaceAccess(token, tenantId, membershipId, workspaceId);
+      } else {
+        await setWorkspaceAccess(token, tenantId, membershipId, workspaceId, next);
+      }
+    } catch (cause) {
+      setAccessByMember((current) => {
+        const memberAccess = { ...(current[membershipId] ?? {}) };
+        if (previous) {
+          memberAccess[workspaceId] = previous;
+        } else {
+          delete memberAccess[workspaceId];
+        }
+        return { ...current, [membershipId]: memberAccess };
+      });
+      setError(t(translationKeyForApiError(cause), { ns: "common" }));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (forbidden) {
     return <StatusBanner tone="error">{t("common:errors.forbidden")}</StatusBanner>;
@@ -121,31 +212,31 @@ export function TenantWorkspacesPage() {
       </header>
       {error ? <StatusBanner tone="error">{error}</StatusBanner> : null}
 
-      <div className={`dashboard-grid ${canInvite ? "dashboard-grid-two" : "dashboard-grid-one"}`}>
-        <form className="surface-card form-card" onSubmit={onCreate}>
-          <div className="card-heading">
-            <span className="card-icon card-icon-purple" aria-hidden="true">+</span>
-            <div>
-              <h2>{t("workspaces:create")}</h2>
-              <p>{t("workspaces:createDescription")}</p>
+      {canManage ? (
+        <div className="dashboard-grid dashboard-grid-two">
+          <form className="surface-card form-card" onSubmit={onCreate}>
+            <div className="card-heading">
+              <span className="card-icon card-icon-purple" aria-hidden="true">+</span>
+              <div>
+                <h2>{t("workspaces:create")}</h2>
+                <p>{t("workspaces:createDescription")}</p>
+              </div>
             </div>
-          </div>
-          <Field id="workspace-name" label={t("workspaces:name")}>
-            <input
-              id="workspace-name"
-              required
-              placeholder={t("workspaces:namePlaceholder")}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </Field>
-          <button className="primary-action" type="submit" disabled={busy}>
-            <span aria-hidden="true">+</span>
-            {busy ? t("common:loading") : t("workspaces:create")}
-          </button>
-        </form>
+            <Field id="workspace-name" label={t("workspaces:name")}>
+              <input
+                id="workspace-name"
+                required
+                placeholder={t("workspaces:namePlaceholder")}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </Field>
+            <button className="primary-action" type="submit" disabled={busy}>
+              <span aria-hidden="true">+</span>
+              {busy ? t("common:loading") : t("workspaces:create")}
+            </button>
+          </form>
 
-        {canInvite ? (
           <form className="surface-card form-card" onSubmit={onInvite}>
             <div className="card-heading">
               <span className="card-icon card-icon-teal" aria-hidden="true">↗</span>
@@ -168,8 +259,8 @@ export function TenantWorkspacesPage() {
               {t("tenants:invite")}
             </button>
           </form>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div className="surface-card entity-section">
         <div className="card-heading card-heading-between">
@@ -182,8 +273,10 @@ export function TenantWorkspacesPage() {
         {workspaces.length === 0 ? (
           <div className="empty-state">
             <span className="empty-state-icon" aria-hidden="true">□</span>
-            <strong>{t("workspaces:emptyTitle")}</strong>
-            <p>{t("workspaces:empty")}</p>
+            <strong>
+              {canManage ? t("workspaces:emptyTitle") : t("workspaces:emptyAssignedTitle")}
+            </strong>
+            <p>{canManage ? t("workspaces:empty") : t("workspaces:emptyAssigned")}</p>
           </div>
         ) : (
           <ul className="entity-card-grid">
@@ -207,6 +300,83 @@ export function TenantWorkspacesPage() {
           </ul>
         )}
       </div>
+
+      {canManage ? (
+        <div className="surface-card entity-section">
+          <div className="card-heading card-heading-between">
+            <div>
+              <h2>{t("members:title")}</h2>
+              <p>{t("members:description")}</p>
+            </div>
+            <span className="count-badge">{members.length}</span>
+          </div>
+          {members.length === 0 ? (
+            <p className="quiet-state">{t("members:empty")}</p>
+          ) : (
+            <ul className="member-list">
+              {members.map((member) => (
+                <li className="member-card" key={member.membershipId}>
+                  <div className="member-card-heading">
+                    <span className="entity-copy">
+                      <strong>{member.displayName}</strong>
+                      <small>{member.email}</small>
+                    </span>
+                    <span className="member-badges">
+                      <span className="role-badge">
+                        {t(`members:roles.${member.role.toLowerCase()}`)}
+                      </span>
+                      <span className="status-pill">
+                        {t(`members:status.${member.status.toLowerCase()}`)}
+                      </span>
+                    </span>
+                  </div>
+                  {member.role === "Owner" || member.role === "Admin" ? (
+                    <p className="quiet-state">{t("members:implicitAccess")}</p>
+                  ) : member.status !== "Active" ? (
+                    <p className="quiet-state">{t("members:inactiveAccess")}</p>
+                  ) : workspaces.length === 0 ? (
+                    <p className="quiet-state">{t("members:noWorkspaces")}</p>
+                  ) : (
+                    <ul className="member-access-list">
+                      {workspaces.map((workspace) => {
+                        const value = accessByMember[member.membershipId]?.[workspace.workspaceId] ?? "None";
+                        const selectId = `access-${member.membershipId}-${workspace.workspaceId}`;
+                        return (
+                          <li key={workspace.workspaceId}>
+                            <label className="member-access-row" htmlFor={selectId}>
+                              <span>{workspace.name}</span>
+                              <select
+                                id={selectId}
+                                value={value}
+                                disabled={busy}
+                                aria-label={t("members:accessLabel", {
+                                  member: member.displayName,
+                                  workspace: workspace.name,
+                                })}
+                                onChange={(event) =>
+                                  void onAccessChange(
+                                    member.membershipId,
+                                    workspace.workspaceId,
+                                    event.target.value as AccessChoice,
+                                  )
+                                }
+                              >
+                                <option value="None">{t("members:access.none")}</option>
+                                <option value="View">{t("members:access.view")}</option>
+                                <option value="Edit">{t("members:access.edit")}</option>
+                              </select>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

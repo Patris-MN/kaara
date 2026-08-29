@@ -1,14 +1,14 @@
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
-import { listTenants } from "../api/client";
 import { translationKeyForApiError } from "../api/errors";
 import { readSelectedTenantId, writeSelectedTenantId } from "../api/session";
-import type { TenantMembership } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { StatusBanner } from "../components/Ui";
+import { useTenantDirectory } from "../tenancy/TenantDirectoryProvider";
+import { NotificationMenu } from "./NotificationMenu";
 
 type IconName = "organization" | "workspace" | "project" | "task" | "logout" | "chevron";
 
@@ -65,32 +65,13 @@ function AppBrandMark() {
 
 export function AppLayout() {
   const { t } = useTranslation(["common", "navigation", "tenants"]);
-  const { user, token, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const { tenants, error: directoryError } = useTenantDirectory();
   const navigate = useNavigate();
   const params = useParams();
-  const [tenants, setTenants] = useState<TenantMembership[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!token) {
-      return;
-    }
-    const controller = new AbortController();
-    void listTenants(token)
-      .then((items) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setTenants(items);
-        setLoadError(null);
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setLoadError(t(translationKeyForApiError(error), { ns: "common" }));
-        }
-      });
-    return () => controller.abort();
-  }, [token, t]);
+  const loadError = directoryError
+    ? t(translationKeyForApiError(directoryError), { ns: "common" })
+    : null;
 
   useEffect(() => {
     if (!user || tenants.length === 0) {
@@ -160,11 +141,19 @@ export function AppLayout() {
               <span>{t("navigation:projects")}</span>
             </span>
           )}
-          <span className="workspace-nav-disabled">
-            <AppIcon name="task" />
-            <span>{t("navigation:tasks")}</span>
-            <small>{t("navigation:soon")}</small>
-          </span>
+          {params.projectId && params.workspaceId && params.tenantId ? (
+            <NavLink
+              to={`/app/tenants/${params.tenantId}/workspaces/${params.workspaceId}/projects/${params.projectId}`}
+            >
+              <AppIcon name="task" />
+              <span>{t("navigation:tasks")}</span>
+            </NavLink>
+          ) : (
+            <span className="workspace-nav-disabled">
+              <AppIcon name="task" />
+              <span>{t("navigation:tasks")}</span>
+            </span>
+          )}
         </nav>
 
         <div className="sidebar-account">
@@ -214,6 +203,7 @@ export function AppLayout() {
               </select>
             </label>
             <LanguageSwitcher />
+            <NotificationMenu />
             <div className="topbar-avatar" title={userName}>
               {userInitial}
             </div>

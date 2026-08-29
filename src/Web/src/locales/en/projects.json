@@ -13,5 +13,6 @@
   "active": "Active",
   "projectDescription": "Structured project workspace ready for collaborative planning.",
   "readyForTasks": "Ready for tasks",
-  "empty": "This workspace has no projects yet."
+  "empty": "This workspace has no projects yet.",
+  "viewOnly": "You can view this workspace. Editing is not available."
 }
