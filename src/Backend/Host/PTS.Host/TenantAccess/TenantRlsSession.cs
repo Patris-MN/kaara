@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore.Storage;
 using PTS.Host.Persistence;
+using PTS.Modules.Tenancy;
 
 namespace PTS.Host.TenantAccess;
 
@@ -22,16 +23,31 @@ public sealed class TenantRlsSession : IAsyncDisposable
     private readonly IDbContextTransaction _transaction;
     private bool _completed;
 
-    internal TenantRlsSession(AppDbContext dbContext, IDbContextTransaction transaction, Guid tenantId)
+    internal TenantRlsSession(
+        AppDbContext dbContext,
+        IDbContextTransaction transaction,
+        Guid tenantId,
+        Guid membershipId,
+        MembershipRole role,
+        bool hasImplicitFullResourceAccess)
     {
         DbContext = dbContext;
         _transaction = transaction;
         TenantId = tenantId;
+        MembershipId = membershipId;
+        Role = role;
+        HasImplicitFullResourceAccess = hasImplicitFullResourceAccess;
     }
 
     public AppDbContext DbContext { get; }
 
     public Guid TenantId { get; }
+
+    public Guid MembershipId { get; }
+
+    public MembershipRole Role { get; }
+
+    public bool HasImplicitFullResourceAccess { get; }
 
     public async Task CommitAsync(CancellationToken cancellationToken = default)
     {

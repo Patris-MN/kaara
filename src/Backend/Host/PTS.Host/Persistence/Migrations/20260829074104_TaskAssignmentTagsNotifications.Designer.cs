@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PTS.Host.Persistence;
@@ -11,9 +12,11 @@ using PTS.Host.Persistence;
 namespace PTS.Host.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260829074104_TaskAssignmentTagsNotifications")]
+    partial class TaskAssignmentTagsNotifications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -298,7 +301,7 @@ namespace PTS.Host.Persistence.Migrations
 
                     b.ToTable("notifications", null, t =>
                         {
-                            t.HasCheckConstraint("ck_notifications_type", "type IN ('TaskAssigned','TaskReassigned','TaskCommentAdded','TaskPriorityChanged','TaskDeadlineChanged','TaskStatusChanged','TaskTagChanged','TaskUpdated','TaskClosed','TaskReopened')");
+                            t.HasCheckConstraint("ck_notifications_type", "type IN ('TaskAssigned')");
                         });
                 });
 
@@ -363,10 +366,6 @@ namespace PTS.Host.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
-                    b.Property<Guid>("CreatedByMembershipId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by_membership_id");
-
                     b.Property<string>("Description")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)")
@@ -419,8 +418,6 @@ namespace PTS.Host.Persistence.Migrations
                     b.HasIndex("TenantId", "AssignedMembershipId")
                         .HasDatabaseName("ix_tasks_tenant_assignee");
 
-                    b.HasIndex("TenantId", "CreatedByMembershipId");
-
                     b.HasIndex("TenantId", "ProjectId")
                         .HasDatabaseName("ix_tasks_tenant_project");
 
@@ -433,131 +430,8 @@ namespace PTS.Host.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_tasks_priority", "priority IN ('Low', 'Normal', 'High', 'Urgent')");
 
-                            t.HasCheckConstraint("ck_tasks_status", "status IN ('Open', 'InProgress', 'Waiting', 'Resolved', 'Closed')");
+                            t.HasCheckConstraint("ck_tasks_status", "status IN ('Todo', 'InProgress', 'Done')");
                         });
-                });
-
-            modelBuilder.Entity("PTS.Modules.WorkManagement.WorkTaskActivity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("ActorMembershipId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("actor_membership_id");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("event_type");
-
-                    b.Property<string>("NewValue")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("new_value");
-
-                    b.Property<string>("OldValue")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("old_value");
-
-                    b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("task_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_task_activities");
-
-                    b.HasIndex("TenantId", "ActorMembershipId");
-
-                    b.HasIndex("TenantId", "TaskId", "CreatedAtUtc")
-                        .HasDatabaseName("ix_task_activities_tenant_task_created");
-
-                    b.ToTable("task_activities", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_task_activities_event_type", "event_type IN ('TaskCreated','TitleChanged','DescriptionChanged','PriorityChanged','DeadlineChanged','StatusChanged','AssigneeChanged','TagAdded','TagRemoved','CommentAdded','CommentEdited','CommentDeleted','TaskReopened')");
-                        });
-                });
-
-            modelBuilder.Entity("PTS.Modules.WorkManagement.WorkTaskComment", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("AuthorMembershipId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("author_membership_id");
-
-                    b.Property<string>("Body")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("body");
-
-                    b.Property<DateTimeOffset>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at_utc");
-
-                    b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("task_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at_utc");
-
-                    b.HasKey("Id")
-                        .HasName("pk_task_comments");
-
-                    b.HasIndex("TenantId", "AuthorMembershipId");
-
-                    b.HasIndex("TenantId", "TaskId", "CreatedAtUtc")
-                        .HasDatabaseName("ix_task_comments_tenant_task_created");
-
-                    b.ToTable("task_comments", (string)null);
-                });
-
-            modelBuilder.Entity("PTS.Modules.WorkManagement.WorkTaskReadState", b =>
-                {
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<Guid>("TaskId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("task_id");
-
-                    b.Property<Guid>("MembershipId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("membership_id");
-
-                    b.Property<DateTimeOffset>("LastViewedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_viewed_at_utc");
-
-                    b.HasKey("TenantId", "TaskId", "MembershipId")
-                        .HasName("pk_task_read_states");
-
-                    b.HasIndex("TenantId", "MembershipId");
-
-                    b.ToTable("task_read_states", (string)null);
                 });
 
             modelBuilder.Entity("PTS.Modules.WorkManagement.WorkTaskTag", b =>
@@ -788,14 +662,6 @@ namespace PTS.Host.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_tasks_memberships_tenant_id_assigned_membership_id");
 
-                    b.HasOne("PTS.Modules.Tenancy.Membership", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "CreatedByMembershipId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_tasks_memberships_tenant_id_created_by_membership_id");
-
                     b.HasOne("PTS.Modules.WorkManagement.Project", null)
                         .WithMany()
                         .HasForeignKey("TenantId", "WorkspaceId", "ProjectId")
@@ -803,63 +669,6 @@ namespace PTS.Host.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_tasks_projects_tenant_id_workspace_id_project_id");
-                });
-
-            modelBuilder.Entity("PTS.Modules.WorkManagement.WorkTaskActivity", b =>
-                {
-                    b.HasOne("PTS.Modules.Tenancy.Membership", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "ActorMembershipId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_activities_memberships_tenant_id_actor_membership_id");
-
-                    b.HasOne("PTS.Modules.WorkManagement.WorkTask", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "TaskId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_activities_tasks_tenant_id_task_id");
-                });
-
-            modelBuilder.Entity("PTS.Modules.WorkManagement.WorkTaskComment", b =>
-                {
-                    b.HasOne("PTS.Modules.Tenancy.Membership", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "AuthorMembershipId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_comments_memberships_tenant_id_author_membership_id");
-
-                    b.HasOne("PTS.Modules.WorkManagement.WorkTask", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "TaskId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_comments_tasks_tenant_id_task_id");
-                });
-
-            modelBuilder.Entity("PTS.Modules.WorkManagement.WorkTaskReadState", b =>
-                {
-                    b.HasOne("PTS.Modules.Tenancy.Membership", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "MembershipId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_read_states_memberships_tenant_id_membership_id");
-
-                    b.HasOne("PTS.Modules.WorkManagement.WorkTask", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId", "TaskId")
-                        .HasPrincipalKey("TenantId", "Id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_task_read_states_tasks_tenant_id_task_id");
                 });
 
             modelBuilder.Entity("PTS.Modules.WorkManagement.WorkTaskTag", b =>

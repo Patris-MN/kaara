@@ -15,6 +15,9 @@ public static class WorkManagementModuleExtensions
     /// </summary>
     public static IServiceCollection AddWorkManagementModule(this IServiceCollection services)
     {
+        services.AddScoped<WorkspaceAuthorizationService>();
+        services.AddScoped<TaskStatusWorkflow>();
+        services.AddScoped<TaskAuthorizationService>();
         return services;
     }
 }

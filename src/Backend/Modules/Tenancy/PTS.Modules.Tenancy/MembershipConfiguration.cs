@@ -44,5 +44,10 @@ public sealed class MembershipConfiguration : IEntityTypeConfiguration<Membershi
 
         builder.HasIndex(m => m.TenantId)
             .HasDatabaseName("ix_memberships_tenant_id");
+
+        // Supports tenant-safe cross-module references such as
+        // WorkspaceAccess(TenantId, MembershipId).
+        builder.HasAlternateKey(m => new { m.TenantId, m.Id })
+            .HasName("ak_memberships_tenant_id_id");
     }
 }

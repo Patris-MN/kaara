@@ -55,7 +55,10 @@ public sealed class TenantRlsSessionFactory : ITenantRlsSessionFactory
         }
 
         var resolution = await _tenantContextResolver.ResolveAsync(userId, requestedTenantId, cancellationToken);
-        if (!resolution.Success || resolution.TenantId is not Guid tenantId)
+        if (!resolution.Success ||
+            resolution.TenantId is not Guid tenantId ||
+            resolution.MembershipId is not Guid membershipId ||
+            resolution.Role is not MembershipRole role)
         {
             throw new TenantAccessDeniedException(
                 userId, requestedTenantId, resolution.FailureReason ?? "Access denied.");
@@ -69,6 +72,8 @@ public sealed class TenantRlsSessionFactory : ITenantRlsSessionFactory
             {
                 await PostgresRlsSettings.SetCurrentUserIdAsync(dbContext, userId, cancellationToken);
                 await PostgresRlsSettings.SetCurrentTenantIdAsync(dbContext, tenantId, cancellationToken);
+                await PostgresRlsSettings.SetCurrentMembershipRoleAsync(dbContext, role, cancellationToken);
+                await PostgresRlsSettings.SetCurrentMembershipIdAsync(dbContext, membershipId, cancellationToken);
             }
             catch
             {
@@ -77,7 +82,13 @@ public sealed class TenantRlsSessionFactory : ITenantRlsSessionFactory
             }
 
             _tenantContextEstablisher.Establish(tenantId);
-            return new TenantRlsSession(dbContext, transaction, tenantId);
+            return new TenantRlsSession(
+                dbContext,
+                transaction,
+                tenantId,
+                membershipId,
+                role,
+                resolution.HasImplicitFullResourceAccess);
         }
         catch
         {

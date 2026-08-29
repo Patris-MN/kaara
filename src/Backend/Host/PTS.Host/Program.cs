@@ -52,6 +52,8 @@ app.MapAuthEndpoints();
 app.MapTenantIsolationEndpoints();
 app.MapTenantLifecycleEndpoints();
 app.MapWorkManagementEndpoints();
+app.MapTaskEndpoints();
+app.MapTaskCollaborationEndpoints();
 
 app.Run();
 

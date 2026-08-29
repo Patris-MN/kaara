@@ -19,6 +19,9 @@ public sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.HasIndex(p => p.TenantId).HasDatabaseName("ix_projects_tenant_id");
         builder.HasIndex(p => p.WorkspaceId).HasDatabaseName("ix_projects_workspace_id");
 
+        builder.HasAlternateKey(p => new { p.TenantId, p.WorkspaceId, p.Id })
+            .HasName("ak_projects_tenant_id_workspace_id_id");
+
         builder.HasOne<Workspace>()
             .WithMany()
             .HasForeignKey(p => new { p.TenantId, p.WorkspaceId })

@@ -22,6 +22,6 @@ public sealed class TenantContextResolver : ITenantContextResolver
         return membership is null
             ? TenantResolutionResult.Denied(
                 $"User '{userId}' has no active membership for tenant '{requestedTenantId}'.")
-            : TenantResolutionResult.Allowed(requestedTenantId);
+            : TenantResolutionResult.Allowed(membership);
     }
 }

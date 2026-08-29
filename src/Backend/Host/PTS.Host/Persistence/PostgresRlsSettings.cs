@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PTS.Modules.Tenancy;
 
 namespace PTS.Host.Persistence;
 
@@ -17,5 +18,21 @@ internal static class PostgresRlsSettings
     public static Task SetCurrentTenantIdAsync(DbContext dbContext, Guid tenantId, CancellationToken cancellationToken)
         => dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT set_config('app.current_tenant_id', {tenantId.ToString()}, true)",
+            cancellationToken);
+
+    public static Task SetCurrentMembershipRoleAsync(
+        DbContext dbContext,
+        MembershipRole role,
+        CancellationToken cancellationToken)
+        => dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.current_membership_role', {role.ToString()}, true)",
+            cancellationToken);
+
+    public static Task SetCurrentMembershipIdAsync(
+        DbContext dbContext,
+        Guid membershipId,
+        CancellationToken cancellationToken)
+        => dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.current_membership_id', {membershipId.ToString()}, true)",
             cancellationToken);
 }
