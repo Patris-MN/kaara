@@ -93,4 +93,35 @@ public sealed class IdentityRlsTests
         var visible = await db.Tenants.ToListAsync();
         Assert.DoesNotContain(visible, t => t.Id == tenantId);
     }
+
+    [SkippableFact]
+    public async Task Tenant_peer_select_requires_current_tenant_context()
+    {
+        Skip.IfNot(_fixture.DatabaseAvailable, _fixture.UnavailableReason);
+
+        var factory = _fixture.Services.GetRequiredService<TestDataFactory>();
+        var (userA, tenantA) = await factory.CreateUserWithTenantAsync("PeerA");
+        var userB = await factory.CreateUserAsync("PeerB");
+        await factory.CreateActiveMembershipAsync(userB, tenantA);
+        var (userC, _) = await factory.CreateUserWithTenantAsync("PeerC");
+
+        await using (var db = await _fixture.Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContextAsync())
+        await using (var tx = await db.Database.BeginTransactionAsync())
+        {
+            await PostgresRlsSettings.SetCurrentUserIdAsync(db, userA, CancellationToken.None);
+            var visible = await db.Users.ToListAsync();
+            Assert.Contains(visible, user => user.Id == userA);
+            Assert.DoesNotContain(visible, user => user.Id == userB);
+            Assert.DoesNotContain(visible, user => user.Id == userC);
+        }
+
+        await using var session = await ScopedTenantSession.OpenAsync(_fixture.Services, userA, tenantA);
+        var peers = await session.DbContext.Users.ToListAsync();
+        Assert.Contains(peers, user => user.Id == userA);
+        Assert.Contains(peers, user => user.Id == userB);
+        Assert.DoesNotContain(peers, user => user.Id == userC);
+        var memberships = await session.DbContext.Memberships.ToListAsync();
+        Assert.All(memberships, membership => Assert.Equal(tenantA, membership.TenantId));
+        Assert.Contains(memberships, membership => membership.UserId == userB);
+    }
 }

@@ -248,4 +248,360 @@ public sealed class WorkManagementRlsTests
             }
         }
     }
+
+    [SkippableFact]
+    public async Task Workspace_access_rows_are_hidden_across_tenants_and_reject_cross_tenant_relationships()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var factory = _postgres.Services.GetRequiredService<TestDataFactory>();
+        var (userA, tenantA) = await factory.CreateUserWithTenantAsync("AccA");
+        var (userB, tenantB) = await factory.CreateUserWithTenantAsync("AccB");
+        var membershipA = await factory.GetMembershipIdAsync(userA, tenantA);
+        var membershipB = await factory.GetMembershipIdAsync(userB, tenantB);
+
+        Guid workspaceA;
+        Guid workspaceB;
+        await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            var workspace = new Workspace
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                Name = "access-A",
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            workspaceA = workspace.Id;
+            sessionA.DbContext.Workspaces.Add(workspace);
+            await sessionA.DbContext.SaveChangesAsync();
+            await sessionA.CommitAsync();
+        }
+
+        await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
+        {
+            var workspace = new Workspace
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantB,
+                Name = "access-B",
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            workspaceB = workspace.Id;
+            sessionB.DbContext.Workspaces.Add(workspace);
+            await sessionB.DbContext.SaveChangesAsync();
+            await sessionB.CommitAsync();
+        }
+
+        await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            sessionA.DbContext.WorkspaceAccess.Add(new WorkspaceAccess
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                MembershipId = membershipA,
+                WorkspaceId = workspaceA,
+                AccessLevel = WorkspaceAccessLevel.View,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await sessionA.DbContext.SaveChangesAsync();
+            await sessionA.CommitAsync();
+        }
+
+        await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
+        {
+            sessionB.DbContext.WorkspaceAccess.Add(new WorkspaceAccess
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantB,
+                MembershipId = membershipB,
+                WorkspaceId = workspaceB,
+                AccessLevel = WorkspaceAccessLevel.Edit,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await sessionB.DbContext.SaveChangesAsync();
+            await sessionB.CommitAsync();
+        }
+
+        await using (var readA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            var seen = await readA.DbContext.WorkspaceAccess.ToListAsync();
+            Assert.Single(seen);
+            Assert.Equal(tenantA, seen[0].TenantId);
+            Assert.Equal(workspaceA, seen[0].WorkspaceId);
+            Assert.DoesNotContain(seen, row => row.WorkspaceId == workspaceB);
+        }
+
+        await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            sessionA.DbContext.WorkspaceAccess.Add(new WorkspaceAccess
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                MembershipId = membershipA,
+                WorkspaceId = workspaceB,
+                AccessLevel = WorkspaceAccessLevel.View,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => sessionA.DbContext.SaveChangesAsync());
+        }
+
+        await using var foreignTenant = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA);
+        foreignTenant.DbContext.WorkspaceAccess.Add(new WorkspaceAccess
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantB,
+            MembershipId = membershipB,
+            WorkspaceId = workspaceB,
+            AccessLevel = WorkspaceAccessLevel.View,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+        });
+        await Assert.ThrowsAsync<DbUpdateException>(() => foreignTenant.DbContext.SaveChangesAsync());
+    }
+
+    [SkippableFact]
+    public async Task Tasks_are_hidden_across_tenants_and_reject_cross_hierarchy_relationships()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var factory = _postgres.Services.GetRequiredService<TestDataFactory>();
+        var (userA, tenantA) = await factory.CreateUserWithTenantAsync("TaskA");
+        var (userB, tenantB) = await factory.CreateUserWithTenantAsync("TaskB");
+        var membershipA = await factory.GetMembershipIdAsync(userA, tenantA);
+        var membershipB = await factory.GetMembershipIdAsync(userB, tenantB);
+
+        Guid workspaceA;
+        Guid workspaceA2;
+        Guid projectA;
+        Guid projectA2;
+        Guid workspaceB;
+        Guid projectB;
+        await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            var first = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "WA1", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var second = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "WA2", CreatedAtUtc = DateTimeOffset.UtcNow };
+            workspaceA = first.Id;
+            workspaceA2 = second.Id;
+            sessionA.DbContext.Workspaces.AddRange(first, second);
+            var project = new Project
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                WorkspaceId = first.Id,
+                Name = "PA1",
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            var otherProject = new Project
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                WorkspaceId = second.Id,
+                Name = "PA2",
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            projectA = project.Id;
+            projectA2 = otherProject.Id;
+            sessionA.DbContext.Projects.AddRange(project, otherProject);
+            sessionA.DbContext.WorkTasks.Add(new WorkTask
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                WorkspaceId = first.Id,
+                ProjectId = project.Id,
+                Title = "task-A",
+                Status = WorkTaskStatus.Open,
+                Priority = WorkTaskPriority.Normal,
+                CreatedByMembershipId = membershipA,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await sessionA.DbContext.SaveChangesAsync();
+            await sessionA.CommitAsync();
+        }
+
+        await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
+        {
+            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "WB", CreatedAtUtc = DateTimeOffset.UtcNow };
+            workspaceB = workspace.Id;
+            sessionB.DbContext.Workspaces.Add(workspace);
+            var project = new Project
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantB,
+                WorkspaceId = workspace.Id,
+                Name = "PB",
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            projectB = project.Id;
+            sessionB.DbContext.Projects.Add(project);
+            sessionB.DbContext.WorkTasks.Add(new WorkTask
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantB,
+                WorkspaceId = workspace.Id,
+                ProjectId = project.Id,
+                Title = "task-B",
+                Status = WorkTaskStatus.Open,
+                Priority = WorkTaskPriority.Low,
+                CreatedByMembershipId = membershipB,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await sessionB.DbContext.SaveChangesAsync();
+            await sessionB.CommitAsync();
+        }
+
+        await using (var readA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            var titles = await readA.DbContext.WorkTasks.Select(task => task.Title).ToListAsync();
+            Assert.Contains("task-A", titles);
+            Assert.DoesNotContain("task-B", titles);
+        }
+
+        await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            sessionA.DbContext.WorkTasks.Add(new WorkTask
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantB,
+                WorkspaceId = workspaceB,
+                ProjectId = projectB,
+                Title = "stolen",
+                Status = WorkTaskStatus.Open,
+                Priority = WorkTaskPriority.High,
+                CreatedByMembershipId = membershipA,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => sessionA.DbContext.SaveChangesAsync());
+        }
+
+        await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            sessionA.DbContext.WorkTasks.Add(new WorkTask
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                WorkspaceId = workspaceA,
+                ProjectId = projectB,
+                Title = "cross-tenant-project",
+                Status = WorkTaskStatus.Open,
+                Priority = WorkTaskPriority.Normal,
+                CreatedByMembershipId = membershipA,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => sessionA.DbContext.SaveChangesAsync());
+        }
+
+        await using var mismatch = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA);
+        mismatch.DbContext.WorkTasks.Add(new WorkTask
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantA,
+            WorkspaceId = workspaceA,
+            ProjectId = projectA2,
+            Title = "wrong-workspace",
+            Status = WorkTaskStatus.Open,
+            Priority = WorkTaskPriority.Normal,
+            CreatedByMembershipId = membershipA,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+        });
+        await Assert.ThrowsAsync<DbUpdateException>(() => mismatch.DbContext.SaveChangesAsync());
+        _ = projectA;
+        _ = workspaceA2;
+    }
+
+    [SkippableFact]
+    public async Task Alternating_tenants_do_not_leak_tasks_across_pooled_sessions()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var factory = _postgres.Services.GetRequiredService<TestDataFactory>();
+        var (userA, tenantA) = await factory.CreateUserWithTenantAsync("PoolTaskA");
+        var (userB, tenantB) = await factory.CreateUserWithTenantAsync("PoolTaskB");
+        var membershipA = await factory.GetMembershipIdAsync(userA, tenantA);
+        var membershipB = await factory.GetMembershipIdAsync(userB, tenantB);
+
+        await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+        {
+            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "pool-WA", CreatedAtUtc = DateTimeOffset.UtcNow };
+            sessionA.DbContext.Workspaces.Add(workspace);
+            var project = new Project
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                WorkspaceId = workspace.Id,
+                Name = "pool-PA",
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            sessionA.DbContext.Projects.Add(project);
+            sessionA.DbContext.WorkTasks.Add(new WorkTask
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantA,
+                WorkspaceId = workspace.Id,
+                ProjectId = project.Id,
+                Title = "pool-task-A",
+                Status = WorkTaskStatus.Open,
+                Priority = WorkTaskPriority.Normal,
+                CreatedByMembershipId = membershipA,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await sessionA.DbContext.SaveChangesAsync();
+            await sessionA.CommitAsync();
+        }
+
+        await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
+        {
+            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "pool-WB", CreatedAtUtc = DateTimeOffset.UtcNow };
+            sessionB.DbContext.Workspaces.Add(workspace);
+            var project = new Project
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantB,
+                WorkspaceId = workspace.Id,
+                Name = "pool-PB",
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            sessionB.DbContext.Projects.Add(project);
+            sessionB.DbContext.WorkTasks.Add(new WorkTask
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantB,
+                WorkspaceId = workspace.Id,
+                ProjectId = project.Id,
+                Title = "pool-task-B",
+                Status = WorkTaskStatus.Closed,
+                Priority = WorkTaskPriority.High,
+                CreatedByMembershipId = membershipB,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            });
+            await sessionB.DbContext.SaveChangesAsync();
+            await sessionB.CommitAsync();
+        }
+
+        for (var i = 0; i < 8; i++)
+        {
+            await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
+            {
+                var titles = await sessionA.DbContext.WorkTasks.Select(task => task.Title).ToListAsync();
+                Assert.Contains("pool-task-A", titles);
+                Assert.DoesNotContain("pool-task-B", titles);
+            }
+
+            await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
+            {
+                var titles = await sessionB.DbContext.WorkTasks.Select(task => task.Title).ToListAsync();
+                Assert.Contains("pool-task-B", titles);
+                Assert.DoesNotContain("pool-task-A", titles);
+            }
+        }
+    }
 }

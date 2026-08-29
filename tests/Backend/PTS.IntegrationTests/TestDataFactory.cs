@@ -60,18 +60,19 @@ public sealed class TestDataFactory
         return user.Id;
     }
 
-    public async Task CreateMembershipAsync(
+    public async Task<Guid> CreateMembershipAsync(
         Guid userId,
         Guid tenantId,
         MembershipStatus status = MembershipStatus.Active,
         MembershipRole role = MembershipRole.Member)
     {
+        var membershipId = Guid.NewGuid();
         await using var db = await _dbContextFactory.CreateDbContextAsync();
         await using var transaction = await db.Database.BeginTransactionAsync();
         await PostgresRlsSettings.SetCurrentUserIdAsync(db, userId, CancellationToken.None);
         db.Memberships.Add(new Membership
         {
-            Id = Guid.NewGuid(),
+            Id = membershipId,
             UserId = userId,
             TenantId = tenantId,
             Role = role,
@@ -80,10 +81,22 @@ public sealed class TestDataFactory
         });
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
+        return membershipId;
     }
 
-    public Task CreateActiveMembershipAsync(Guid userId, Guid tenantId, MembershipRole role = MembershipRole.Member)
+    public Task<Guid> CreateActiveMembershipAsync(Guid userId, Guid tenantId, MembershipRole role = MembershipRole.Member)
         => CreateMembershipAsync(userId, tenantId, MembershipStatus.Active, role);
+
+    public async Task SetMembershipStatusAsync(Guid userId, Guid tenantId, MembershipStatus status)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await PostgresRlsSettings.SetCurrentUserIdAsync(db, userId, CancellationToken.None);
+        var membership = await db.Memberships.SingleAsync(item => item.UserId == userId && item.TenantId == tenantId);
+        membership.Status = status;
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+    }
 
     public async Task<(Guid UserId, Guid TenantId)> CreateUserWithTenantAsync(string namePrefix)
     {
@@ -91,5 +104,18 @@ public sealed class TestDataFactory
         var userId = await CreateUserAsync(namePrefix);
         await CreateActiveMembershipAsync(userId, tenantId);
         return (userId, tenantId);
+    }
+
+    public async Task<Guid> GetMembershipIdAsync(Guid userId, Guid tenantId)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await PostgresRlsSettings.SetCurrentUserIdAsync(db, userId, CancellationToken.None);
+        var membershipId = await db.Memberships
+            .Where(membership => membership.UserId == userId && membership.TenantId == tenantId)
+            .Select(membership => membership.Id)
+            .SingleAsync();
+        await transaction.CommitAsync();
+        return membershipId;
     }
 }
