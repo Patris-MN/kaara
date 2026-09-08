@@ -79,34 +79,20 @@ public sealed class WorkManagementRlsTests
         Guid workspaceB;
         await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
         {
-            var ws = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "WA", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var ws = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "WA", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
             workspaceA = ws.Id;
             sessionA.DbContext.Workspaces.Add(ws);
-            sessionA.DbContext.Projects.Add(new Project
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantA,
-                WorkspaceId = ws.Id,
-                Name = "PA",
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            sessionA.DbContext.Projects.Add(TestProjectFactory.SeedProject(tenantA, ws.Id, "PA"));
             await sessionA.DbContext.SaveChangesAsync();
             await sessionA.CommitAsync();
         }
 
         await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
         {
-            var ws = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "WB", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var ws = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "WB", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
             workspaceB = ws.Id;
             sessionB.DbContext.Workspaces.Add(ws);
-            sessionB.DbContext.Projects.Add(new Project
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantB,
-                WorkspaceId = ws.Id,
-                Name = "PB",
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            sessionB.DbContext.Projects.Add(TestProjectFactory.SeedProject(tenantB, ws.Id, "PB"));
             await sessionB.DbContext.SaveChangesAsync();
             await sessionB.CommitAsync();
         }
@@ -152,7 +138,7 @@ public sealed class WorkManagementRlsTests
         Guid workspaceId;
         await using (var session = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
         {
-            var ws = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "move", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var ws = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "move", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
             workspaceId = ws.Id;
             session.DbContext.Workspaces.Add(ws);
             await session.DbContext.SaveChangesAsync();
@@ -177,7 +163,7 @@ public sealed class WorkManagementRlsTests
         Guid workspaceB;
         await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
         {
-            var ws = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "B", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var ws = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "B", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
             workspaceB = ws.Id;
             sessionB.DbContext.Workspaces.Add(ws);
             await sessionB.DbContext.SaveChangesAsync();
@@ -185,14 +171,7 @@ public sealed class WorkManagementRlsTests
         }
 
         await using var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA);
-        sessionA.DbContext.Projects.Add(new Project
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantA,
-            WorkspaceId = workspaceB,
-            Name = "cross",
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-        });
+        sessionA.DbContext.Projects.Add(TestProjectFactory.SeedProject(tenantA, workspaceB, "cross"));
         await Assert.ThrowsAsync<DbUpdateException>(() => sessionA.DbContext.SaveChangesAsync());
     }
 
@@ -302,7 +281,6 @@ public sealed class WorkManagementRlsTests
                 WorkspaceId = workspaceA,
                 AccessLevel = WorkspaceAccessLevel.View,
                 CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
             });
             await sessionA.DbContext.SaveChangesAsync();
             await sessionA.CommitAsync();
@@ -318,7 +296,6 @@ public sealed class WorkManagementRlsTests
                 WorkspaceId = workspaceB,
                 AccessLevel = WorkspaceAccessLevel.Edit,
                 CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
             });
             await sessionB.DbContext.SaveChangesAsync();
             await sessionB.CommitAsync();
@@ -343,7 +320,6 @@ public sealed class WorkManagementRlsTests
                 WorkspaceId = workspaceB,
                 AccessLevel = WorkspaceAccessLevel.View,
                 CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
             });
             await Assert.ThrowsAsync<DbUpdateException>(() => sessionA.DbContext.SaveChangesAsync());
         }
@@ -357,7 +333,6 @@ public sealed class WorkManagementRlsTests
             WorkspaceId = workspaceB,
             AccessLevel = WorkspaceAccessLevel.View,
             CreatedAtUtc = DateTimeOffset.UtcNow,
-            UpdatedAtUtc = DateTimeOffset.UtcNow,
         });
         await Assert.ThrowsAsync<DbUpdateException>(() => foreignTenant.DbContext.SaveChangesAsync());
     }
@@ -381,75 +356,32 @@ public sealed class WorkManagementRlsTests
         Guid projectB;
         await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
         {
-            var first = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "WA1", CreatedAtUtc = DateTimeOffset.UtcNow };
-            var second = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "WA2", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var first = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "WA1", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            var second = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "WA2", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
             workspaceA = first.Id;
             workspaceA2 = second.Id;
             sessionA.DbContext.Workspaces.AddRange(first, second);
-            var project = new Project
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantA,
-                WorkspaceId = first.Id,
-                Name = "PA1",
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            };
-            var otherProject = new Project
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantA,
-                WorkspaceId = second.Id,
-                Name = "PA2",
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            };
+            var project = TestProjectFactory.SeedProject(tenantA, first.Id, "PA1");
+            var otherProject = TestProjectFactory.SeedProject(tenantA, second.Id, "PA2");
             projectA = project.Id;
             projectA2 = otherProject.Id;
             sessionA.DbContext.Projects.AddRange(project, otherProject);
-            sessionA.DbContext.WorkTasks.Add(new WorkTask
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantA,
-                WorkspaceId = first.Id,
-                ProjectId = project.Id,
-                Title = "task-A",
-                Status = WorkTaskStatus.Open,
-                Priority = WorkTaskPriority.Normal,
-                CreatedByMembershipId = membershipA,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            sessionA.DbContext.WorkTasks.Add(
+                TestProjectFactory.SeedWorkTask(tenantA, first.Id, project.Id, membershipA, "task-A"));
             await sessionA.DbContext.SaveChangesAsync();
             await sessionA.CommitAsync();
         }
 
         await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
         {
-            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "WB", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "WB", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
             workspaceB = workspace.Id;
             sessionB.DbContext.Workspaces.Add(workspace);
-            var project = new Project
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantB,
-                WorkspaceId = workspace.Id,
-                Name = "PB",
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            };
+            var project = TestProjectFactory.SeedProject(tenantB, workspace.Id, "PB");
             projectB = project.Id;
             sessionB.DbContext.Projects.Add(project);
-            sessionB.DbContext.WorkTasks.Add(new WorkTask
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantB,
-                WorkspaceId = workspace.Id,
-                ProjectId = project.Id,
-                Title = "task-B",
-                Status = WorkTaskStatus.Open,
-                Priority = WorkTaskPriority.Low,
-                CreatedByMembershipId = membershipB,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            sessionB.DbContext.WorkTasks.Add(
+                TestProjectFactory.SeedWorkTask(tenantB, workspace.Id, project.Id, membershipB, "task-B", priority: WorkTaskPriority.Low));
             await sessionB.DbContext.SaveChangesAsync();
             await sessionB.CommitAsync();
         }
@@ -463,54 +395,21 @@ public sealed class WorkManagementRlsTests
 
         await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
         {
-            sessionA.DbContext.WorkTasks.Add(new WorkTask
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantB,
-                WorkspaceId = workspaceB,
-                ProjectId = projectB,
-                Title = "stolen",
-                Status = WorkTaskStatus.Open,
-                Priority = WorkTaskPriority.High,
-                CreatedByMembershipId = membershipA,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            sessionA.DbContext.WorkTasks.Add(
+                TestProjectFactory.SeedWorkTask(tenantB, workspaceB, projectB, membershipA, "stolen", priority: WorkTaskPriority.High));
             await Assert.ThrowsAsync<DbUpdateException>(() => sessionA.DbContext.SaveChangesAsync());
         }
 
         await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
         {
-            sessionA.DbContext.WorkTasks.Add(new WorkTask
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantA,
-                WorkspaceId = workspaceA,
-                ProjectId = projectB,
-                Title = "cross-tenant-project",
-                Status = WorkTaskStatus.Open,
-                Priority = WorkTaskPriority.Normal,
-                CreatedByMembershipId = membershipA,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            sessionA.DbContext.WorkTasks.Add(
+                TestProjectFactory.SeedWorkTask(tenantA, workspaceA, projectB, membershipA, "cross-tenant-project"));
             await Assert.ThrowsAsync<DbUpdateException>(() => sessionA.DbContext.SaveChangesAsync());
         }
 
         await using var mismatch = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA);
-        mismatch.DbContext.WorkTasks.Add(new WorkTask
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantA,
-            WorkspaceId = workspaceA,
-            ProjectId = projectA2,
-            Title = "wrong-workspace",
-            Status = WorkTaskStatus.Open,
-            Priority = WorkTaskPriority.Normal,
-            CreatedByMembershipId = membershipA,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-            UpdatedAtUtc = DateTimeOffset.UtcNow,
-        });
+        mismatch.DbContext.WorkTasks.Add(
+            TestProjectFactory.SeedWorkTask(tenantA, workspaceA, projectA2, membershipA, "wrong-workspace"));
         await Assert.ThrowsAsync<DbUpdateException>(() => mismatch.DbContext.SaveChangesAsync());
         _ = projectA;
         _ = workspaceA2;
@@ -529,60 +428,31 @@ public sealed class WorkManagementRlsTests
 
         await using (var sessionA = await ScopedTenantSession.OpenAsync(_postgres.Services, userA, tenantA))
         {
-            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "pool-WA", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantA, Name = "pool-WA", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
             sessionA.DbContext.Workspaces.Add(workspace);
-            var project = new Project
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantA,
-                WorkspaceId = workspace.Id,
-                Name = "pool-PA",
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            };
+            var project = TestProjectFactory.SeedProject(tenantA, workspace.Id, "pool-PA");
             sessionA.DbContext.Projects.Add(project);
-            sessionA.DbContext.WorkTasks.Add(new WorkTask
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantA,
-                WorkspaceId = workspace.Id,
-                ProjectId = project.Id,
-                Title = "pool-task-A",
-                Status = WorkTaskStatus.Open,
-                Priority = WorkTaskPriority.Normal,
-                CreatedByMembershipId = membershipA,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            sessionA.DbContext.WorkTasks.Add(
+                TestProjectFactory.SeedWorkTask(tenantA, workspace.Id, project.Id, membershipA, "pool-task-A"));
             await sessionA.DbContext.SaveChangesAsync();
             await sessionA.CommitAsync();
         }
 
         await using (var sessionB = await ScopedTenantSession.OpenAsync(_postgres.Services, userB, tenantB))
         {
-            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "pool-WB", CreatedAtUtc = DateTimeOffset.UtcNow };
+            var workspace = new Workspace { Id = Guid.NewGuid(), TenantId = tenantB, Name = "pool-WB", CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
             sessionB.DbContext.Workspaces.Add(workspace);
-            var project = new Project
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantB,
-                WorkspaceId = workspace.Id,
-                Name = "pool-PB",
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            };
+            var project = TestProjectFactory.SeedProject(tenantB, workspace.Id, "pool-PB");
             sessionB.DbContext.Projects.Add(project);
-            sessionB.DbContext.WorkTasks.Add(new WorkTask
-            {
-                Id = Guid.NewGuid(),
-                TenantId = tenantB,
-                WorkspaceId = workspace.Id,
-                ProjectId = project.Id,
-                Title = "pool-task-B",
-                Status = WorkTaskStatus.Closed,
-                Priority = WorkTaskPriority.High,
-                CreatedByMembershipId = membershipB,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            sessionB.DbContext.WorkTasks.Add(
+                TestProjectFactory.SeedWorkTask(
+                    tenantB,
+                    workspace.Id,
+                    project.Id,
+                    membershipB,
+                    "pool-task-B",
+                    status: WorkTaskStatus.Closed,
+                    priority: WorkTaskPriority.High));
             await sessionB.DbContext.SaveChangesAsync();
             await sessionB.CommitAsync();
         }

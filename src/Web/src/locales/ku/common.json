@@ -9,6 +9,12 @@
   "cancel": "پاشگەزبوونەوە",
   "close": "داخستن",
   "loading": "بارکردن…",
+  "feedback": {
+    "region": "ئەنجامی کردارەکان",
+    "dismiss": "داخستنی ئاگاداری",
+    "connectionTitle": "کێشەی پەیوەندی",
+    "connectionBody": "نەتوانرا بگەینە ڕاژەکار. پەیوەندییەکە بپشکنە و دووبارە هەوڵ بدەرەوە."
+  },
   "signedInAs": "چوونەژوورەوە وەک {{name}}",
   "platformAdministrator": "بەڕێوەبەری پلاتفۆرم",
   "notFound": {
@@ -36,6 +42,7 @@
     "invalid_project": "ناوی پرۆژە بنووسە.",
     "workspace_not_found": "شوێنی کار نەدۆزرایەوە.",
     "tenant_access_denied": "دەستت ناگات بەم ڕێکخراوە.",
+    "tenant_update_forbidden": "ناتوانیت ئەم ڕێکخراوە بگۆڕیت.",
     "workspace_create_forbidden": "ناتوانیت شوێنی کار لەم ڕێکخراوە دروست بکەیت.",
     "workspace_edit_forbidden": "ناتوانیت ئەم شوێنی کارە یان پڕۆژەکانی بگۆڕیت.",
     "workspace_access_manage_forbidden": "ناتوانیت دەسەڵاتی شوێنی کار بۆ ئەم ڕێکخراوە بەڕێوەببەیت.",

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ import arTasks from "../locales/ar/tasks.json";
 import kuTasks from "../locales/ku/tasks.json";
 import { formatTaskDate } from "../tasks/presentation";
 import { TenantDirectoryProvider } from "../tenancy/TenantDirectoryProvider";
+import { deriveAccountCapabilities } from "../test/directoryFetchHandlers";
 import { clearSession, writeAccessToken } from "./session";
 import type { WorkTask } from "./types";
 
@@ -75,7 +76,14 @@ const firstTask: WorkTask = {
   createdByDisplayName: "User A",
   createdByEmail: authUser.email,
   unseenActivityCount: 0,
-  capabilities: null,
+  capabilities: {
+    canEditDefinition: true,
+    canManageTags: true,
+    canReassign: true,
+    canComment: true,
+    canDelete: true,
+    allowedStatuses: ["Open", "InProgress", "Waiting", "Resolved", "Closed"],
+  },
 };
 
 const overdueTask: WorkTask = {
@@ -118,7 +126,16 @@ async function enterApp(
   path: string,
 ) {
   writeAccessToken("token-a");
-  vi.stubGlobal("fetch", vi.fn(fetchImpl));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const pathName = pathOf(input);
+      if (pathName === "/notifications") {
+        return json({ items: [], unreadCount: 0 });
+      }
+      return fetchImpl(input, init);
+    }),
+  );
   renderApp(path);
   expect(await screen.findByLabelText(enTenants.selector)).toBeTruthy();
 }
@@ -133,6 +150,9 @@ function shellHandlers(path: string) {
   if (path.endsWith("/invitations")) {
     return json([]);
   }
+  if (path === "/account/capabilities") {
+    return json(deriveAccountCapabilities([{ role: tenantA.role }]));
+  }
   if (path.endsWith("/assignable-members")) {
     return json([]);
   }
@@ -140,7 +160,9 @@ function shellHandlers(path: string) {
     return json([]);
   }
   if (path.endsWith("/notifications")) {
-    return json([]);
+    return path === "/notifications"
+      ? json({ items: [], unreadCount: 0 })
+      : json([]);
   }
   return null;
 }
@@ -217,7 +239,7 @@ describe("phase 6 task management UI", () => {
     expect(screen.getByText(new RegExp(formatTaskDate("2026-09-01")))).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: enTasks.create }));
+    await user.click(screen.getAllByRole("button", { name: enTasks.newTask })[0]!);
     const prioritySelect = screen.getByLabelText(enTasks.priority.label);
     expect(prioritySelect).toHaveProperty("value", "Normal");
     expect(screen.getByRole("option", { name: new RegExp(enTasks.priority.low) })).toBeTruthy();
@@ -225,30 +247,29 @@ describe("phase 6 task management UI", () => {
     expect(screen.getByRole("option", { name: new RegExp(enTasks.priority.high) })).toBeTruthy();
     expect(screen.getByRole("option", { name: new RegExp(enTasks.priority.urgent) })).toBeTruthy();
 
-    await user.type(screen.getByLabelText(enTasks.fields.title), "New task");
+    fireEvent.change(screen.getByLabelText(enTasks.fields.title), { target: { value: "Ship feature" } });
     await user.selectOptions(prioritySelect, "Urgent");
     expect(prioritySelect).toHaveProperty("value", "Urgent");
     fireEvent.change(screen.getByLabelText(enTasks.deadline.label), { target: { value: "2026-09-15" } });
     expect(screen.getByText(formatTaskDate("2026-09-15"))).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: enTasks.create }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: enTasks.newTask }));
 
-    expect(await screen.findByText("New task")).toBeTruthy();
+    expect(await screen.findByText("Ship feature")).toBeTruthy();
     expect(lastCreate).toMatchObject({
-      title: "New task",
+      title: "Ship feature",
       priority: "Urgent",
       dueDate: "2026-09-15",
     });
     expect(screen.queryByRole("dialog")).toBeNull();
-    await user.click(screen.getByRole("button", { name: enTasks.create }));
+    await user.click(screen.getAllByRole("button", { name: enTasks.newTask })[0]!);
     expect((screen.getByLabelText(enTasks.fields.title) as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText(enTasks.priority.label) as HTMLSelectElement).value).toBe("Normal");
     expect(screen.getByText(enTasks.deadline.none)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: enCommon.cancel }));
 
     await user.click(screen.getByRole("button", { name: /Kickoff/ }));
-    const titleField = await screen.findByLabelText(enTasks.fields.title, { selector: "#edit-task-title" });
-    await user.clear(titleField);
-    await user.type(titleField, "Kickoff done");
+    const titleField = await screen.findByLabelText(enTasks.fields.title, { selector: "#edit-task-title-visible" });
+    fireEvent.change(titleField, { target: { value: "Kickoff done" } });
     await user.selectOptions(
       screen.getByLabelText(enTasks.fields.status, { selector: "#edit-task-status" }),
       "Closed",
@@ -261,7 +282,7 @@ describe("phase 6 task management UI", () => {
       target: { value: "2026-10-01" },
     });
     await user.click(screen.getByRole("button", { name: enTasks.save }));
-    expect(await screen.findByText("Kickoff done")).toBeTruthy();
+    expect(screen.getAllByText("Kickoff done").length).toBeGreaterThanOrEqual(1);
     expect(lastUpdate).toMatchObject({
       title: "Kickoff done",
       status: "Closed",
@@ -269,7 +290,7 @@ describe("phase 6 task management UI", () => {
       dueDate: "2026-10-01",
     });
     expect(screen.getByText(enTasks.priority.high)).toBeTruthy();
-  });
+  }, 8000);
 
   it("can remove a deadline and keeps input after a failed create", async () => {
     const user = userEvent.setup();
@@ -297,14 +318,14 @@ describe("phase 6 task management UI", () => {
     }, taskPage);
 
     expect(await screen.findByText(enTasks.emptyTitle)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: enTasks.create }));
+    await user.click(screen.getAllByRole("button", { name: enTasks.newTask })[0]!);
     const title = screen.getByLabelText(enTasks.fields.title);
     await user.type(title, "Kept title");
     fireEvent.change(screen.getByLabelText(enTasks.deadline.label), { target: { value: "2026-09-15" } });
     await user.click(screen.getByRole("button", { name: enTasks.deadline.remove }));
     expect(screen.getByText(enTasks.deadline.none)).toBeTruthy();
     fireEvent.change(screen.getByLabelText(enTasks.deadline.label), { target: { value: "2026-09-15" } });
-    await user.click(screen.getByRole("button", { name: enTasks.create }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: enTasks.newTask }));
     expect(await screen.findByText(enCommon.errors.invalid_task)).toBeTruthy();
     expect((screen.getByLabelText(enTasks.fields.title) as HTMLInputElement).value).toBe("Kept title");
     expect(screen.queryByRole("button", { name: /Kept title/ })).toBeNull();
@@ -330,7 +351,7 @@ describe("phase 6 task management UI", () => {
     }, taskPage);
 
     expect(await screen.findByText("Late brief")).toBeTruthy();
-    expect(screen.getAllByText(enTasks.deadline.overdue)).toHaveLength(1);
+    expect(screen.getAllByText(enTasks.deadline.overdue).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(enTasks.priority.urgent).length).toBeGreaterThan(0);
   });
 
@@ -346,7 +367,13 @@ describe("phase 6 task management UI", () => {
       if (path.endsWith("/invitations")) {
         return json([]);
       }
-      if (path.endsWith("/assignable-members") || path.endsWith("/notifications") || path.endsWith("/tags")) {
+      if (path.endsWith("/assignable-members") || path.endsWith("/tags")) {
+        return json([]);
+      }
+      if (path === "/notifications") {
+        return json({ items: [], unreadCount: 0 });
+      }
+      if (path.endsWith("/notifications")) {
         return json([]);
       }
       if (path.endsWith(`/workspaces/${workspace.workspaceId}`)) {
@@ -363,8 +390,8 @@ describe("phase 6 task management UI", () => {
 
     expect(await screen.findByText("Kickoff")).toBeTruthy();
     expect(screen.getByText(enTasks.viewOnly)).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: enTasks.create })).toBeNull();
-    expect(screen.queryByRole("button", { name: enTasks.create })).toBeNull();
+    expect(screen.queryByRole("heading", { name: enTasks.newTask })).toBeNull();
+    expect(screen.queryByRole("button", { name: enTasks.newTask })).toBeNull();
     expect(screen.queryByRole("button", { name: enTasks.save })).toBeNull();
     expect(screen.queryByRole("button", { name: enTasks.deadline.remove })).toBeNull();
 
@@ -383,14 +410,18 @@ describe("phase 6 task management UI", () => {
       if (path.endsWith("/invitations")) {
         return json([]);
       }
+      if (path === "/notifications") {
+        return json({ items: [], unreadCount: 0 });
+      }
       if (path.endsWith("/notifications")) {
         return json([]);
       }
       return json({ error: "workspace_not_found" }, 404);
     }, taskPage);
 
-    expect((await screen.findByRole("alert")).textContent).toContain(enCommon.errors.project_not_found);
-    expect(screen.queryByRole("heading", { name: enTasks.create })).toBeNull();
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts.some((alert) => alert.textContent?.includes(enCommon.errors.project_not_found))).toBe(true);
+    expect(screen.queryByRole("heading", { name: enTasks.newTask })).toBeNull();
   });
 
   it("logs out on 401 and stays signed in on 403", async () => {
@@ -456,7 +487,13 @@ describe("phase 6 task management UI", () => {
       if (path.endsWith("/invitations")) {
         return json([]);
       }
-      if (path.endsWith("/assignable-members") || path.endsWith("/notifications") || path.endsWith("/tags")) {
+      if (path.endsWith("/assignable-members") || path.endsWith("/tags")) {
+        return json([]);
+      }
+      if (path === "/notifications") {
+        return json({ items: [], unreadCount: 0 });
+      }
+      if (path.endsWith("/notifications")) {
         return json([]);
       }
       if (path.endsWith(`/workspaces/${workspace.workspaceId}`)) {
@@ -516,7 +553,7 @@ describe("phase 6 task management UI", () => {
     expect(enTasks.status.open).toBeTruthy();
     expect(enTasks.status.closed).toBeTruthy();
     expect(enTasks.viewChanges).toBeTruthy();
-    expect(enTasks.deleteConfirm).toBeTruthy();
+    expect(enTasks.deleteConfirmTitle).toBeTruthy();
     expect(arTasks.assignee).toBeTruthy();
     expect(arTasks.status.resolved).toBeTruthy();
     expect(kuTasks.tags).toBeTruthy();

@@ -49,6 +49,7 @@ public sealed class WorkTaskConfiguration : IEntityTypeConfiguration<WorkTask>
         builder.Property(task => task.AssignedMembershipId).HasColumnName("assigned_membership_id");
         builder.Property(task => task.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
         builder.Property(task => task.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+        builder.Property(task => task.HasExternalEngagement).HasColumnName("has_external_engagement").IsRequired();
 
         builder.HasAlternateKey(task => new { task.TenantId, task.Id })
             .HasName("ak_tasks_tenant_id_id");

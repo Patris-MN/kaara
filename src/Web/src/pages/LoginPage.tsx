@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -6,6 +6,7 @@ import { isApiError, translationKeyForApiError } from "../api/errors";
 import { useAuth } from "../auth/AuthProvider";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { Field, StatusBanner, TextLink } from "../components/Ui";
+import { useFeedback } from "../feedback/FeedbackProvider";
 
 function ProductMark() {
   return (
@@ -89,6 +90,7 @@ function WorkflowGraphic() {
 export function LoginPage() {
   const { t } = useTranslation(["auth", "common"]);
   const { login } = useAuth();
+  const { show } = useFeedback();
   const navigate = useNavigate();
   const location = useLocation();
   const formErrorId = useId();
@@ -102,6 +104,19 @@ export function LoginPage() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [recoveryNotice, setRecoveryNotice] = useState(false);
+
+  useEffect(() => {
+    const registered = (location.state as { registered?: boolean } | null)?.registered;
+    if (!registered) {
+      return;
+    }
+    show({
+      tone: "success",
+      title: t("auth:registerSuccessTitle"),
+      body: t("auth:registerSuccessBody"),
+    });
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, show, t]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -131,7 +146,9 @@ export function LoginPage() {
         localStorage.removeItem("pts.rememberedEmail");
       }
       const from = (location.state as { from?: string } | null)?.from;
-      navigate(from && from.startsWith("/app") ? from : "/app", { replace: true });
+      const safeReturn =
+        from && (from.startsWith("/app") || from.startsWith("/invite/")) ? from : "/app";
+      navigate(safeReturn, { replace: true });
     } catch (cause) {
       if (isApiError(cause) && (cause.code === "invalid_credentials" || cause.status === 401)) {
         setError(t("auth:errors.invalidCredentials"));

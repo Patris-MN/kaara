@@ -5,7 +5,11 @@
   "workspace": "Workspace",
   "soon": "Soon",
   "tenants": "Organizations",
+  "members": "Members",
   "workspaces": "Workspaces",
   "projects": "Projects",
-  "tasks": "Tasks"
+  "tasks": "Tasks",
+  "selectOrganizationFirst": "Select an organization first",
+  "selectWorkspaceFirst": "Select a workspace first",
+  "selectProjectFirst": "Select a project first"
 }

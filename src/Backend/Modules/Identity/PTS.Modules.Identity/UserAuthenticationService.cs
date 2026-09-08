@@ -94,5 +94,61 @@ public sealed class UserAuthenticationService : IUserAuthenticationService
         return await _store.FindByIdAsync(credential.UserId, cancellationToken);
     }
 
+    public async Task<User> UpdateDisplayNameAsync(
+        Guid userId,
+        string displayName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            throw new ArgumentException("Display name is required.", nameof(displayName));
+        }
+
+        var user = await _store.FindByIdAsync(userId, cancellationToken)
+            ?? throw new InvalidOperationException("User was not found.");
+
+        user.DisplayName = displayName.Trim();
+        await _store.UpdateUserAsync(user, cancellationToken);
+        return user;
+    }
+
+    public async Task ChangePasswordAsync(
+        Guid userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(currentPassword))
+        {
+            throw new ArgumentException("Current password is required.", nameof(currentPassword));
+        }
+
+        if (string.IsNullOrEmpty(newPassword) || newPassword.Length < MinimumPasswordLength)
+        {
+            throw new ArgumentException(
+                $"Password must be at least {MinimumPasswordLength} characters.", nameof(newPassword));
+        }
+
+        var credential = await _store.FindCredentialByUserIdAsync(userId, cancellationToken)
+            ?? throw new InvalidOperationException("Local credentials were not found for this user.");
+
+        var probeUser = new User
+        {
+            Id = credential.UserId,
+            Email = credential.Email,
+            DisplayName = string.Empty,
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+        };
+
+        var verification = _passwordHasher.VerifyHashedPassword(probeUser, credential.PasswordHash, currentPassword);
+        if (verification is PasswordVerificationResult.Failed)
+        {
+            throw new InvalidCurrentPasswordException();
+        }
+
+        credential.PasswordHash = _passwordHasher.HashPassword(probeUser, newPassword);
+        await _store.UpdateCredentialAsync(credential, cancellationToken);
+    }
+
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 }

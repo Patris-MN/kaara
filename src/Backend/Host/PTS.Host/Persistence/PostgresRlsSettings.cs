@@ -35,4 +35,12 @@ internal static class PostgresRlsSettings
         => dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT set_config('app.current_membership_id', {membershipId.ToString()}, true)",
             cancellationToken);
+
+    public static Task SetInvitationTokenHashAsync(
+        DbContext dbContext,
+        string tokenHash,
+        CancellationToken cancellationToken)
+        => dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT set_config('app.invitation_token_hash', {tokenHash}, true)",
+            cancellationToken);
 }

@@ -1,10 +1,11 @@
 # PTS Web (React + TypeScript)
 
-## Phase 1 status
+## Current status (Phase 7.1)
 
-Minimal app shell demonstrating the localization architecture only. No
-authentication, tenant, project, or task UI exists yet — see
-`docs/architecture/architecture-charter.md`.
+Authenticated application shell with organization context, list-first
+Organizations page, and the Phase 6 Task UI (compact list, create/detail
+modals, handoff). Localization architecture below still applies.
+The product baseline is the repository root [`README.md`](../../README.md).
 
 ## Localization
 
@@ -24,9 +25,9 @@ authentication, tenant, project, or task UI exists yet — see
 ## What is intentionally NOT here yet
 
 - No persistence of the language choice beyond the browser (`localStorage`, via
-  `i18next-browser-languagedetector`). Saving it as part of a signed-in user's
-  preference is future work, once the Identity module exists.
-- No business UI (projects, tasks, dashboards, etc.).
+  `i18next-browser-languagedetector`). Saving it as a signed-in user preference
+  is future work.
+- No dashboards, Kanban, attachments, or billing UI.
 
 ## Scripts
 

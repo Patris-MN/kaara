@@ -128,7 +128,7 @@ public sealed class WorkspaceResourceAuthorizationHttpTests : IClassFixture<PtsW
 
         var viewCreate = await memberClient.PostAsJsonAsync(
             $"/tenants/{tenant.TenantId}/workspaces/{leopard.WorkspaceId}/projects",
-            new CreateProjectRequest("Nope"));
+            TestProjectFactory.CreateRequest("Nope"));
         Assert.Equal(HttpStatusCode.Forbidden, viewCreate.StatusCode);
         Assert.Equal("workspace_edit_forbidden", await ReadErrorAsync(viewCreate));
 
@@ -146,7 +146,7 @@ public sealed class WorkspaceResourceAuthorizationHttpTests : IClassFixture<PtsW
 
         var editCreate = await memberClient.PostAsJsonAsync(
             $"/tenants/{tenant.TenantId}/workspaces/{leopard.WorkspaceId}/projects",
-            new CreateProjectRequest("Allowed"));
+            TestProjectFactory.CreateRequest("Allowed"));
         editCreate.EnsureSuccessStatusCode();
 
         (await ownerClient.DeleteAsync(
@@ -203,7 +203,7 @@ public sealed class WorkspaceResourceAuthorizationHttpTests : IClassFixture<PtsW
     {
         var response = await client.PostAsJsonAsync(
             $"/tenants/{tenantId}/workspaces/{workspaceId}/projects",
-            new CreateProjectRequest(name));
+            TestProjectFactory.CreateRequest(name));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ProjectResponse>())!;
     }

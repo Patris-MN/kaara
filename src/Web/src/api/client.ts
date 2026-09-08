@@ -2,13 +2,19 @@ import { apiRequest } from "./http";
 import type {
   AssignableMember,
   AuthUser,
+  AccountProfile,
+  AuthProviders,
   LoginResponse,
   Project,
   TaskPriority,
   TaskStatus,
   TenantMember,
   TenantMembership,
+  PendingInvitation,
+  InvitationPreview,
+  InvitationCreated,
   WorkNotification,
+  GlobalNotificationInbox,
   WorkTag,
   WorkTask,
   WorkTaskActivity,
@@ -16,6 +22,8 @@ import type {
   Workspace,
   WorkspaceAccess,
   WorkspaceAccessLevel,
+  WorkspaceMemberAccess,
+  AccountCapabilities,
 } from "./types";
 
 export function registerAccount(email: string, password: string, displayName: string) {
@@ -38,12 +46,40 @@ export function loadCurrentUser(token: string) {
   return apiRequest<AuthUser>("/auth/me", { token, skipUnauthorizedHandler: true });
 }
 
+export function getAuthProviders() {
+  return apiRequest<AuthProviders>("/auth/providers", { skipUnauthorizedHandler: true });
+}
+
+export function getAccountProfile(token: string) {
+  return apiRequest<AccountProfile>("/account/profile", { token });
+}
+
+export function updateAccountProfile(token: string, displayName: string) {
+  return apiRequest<AccountProfile>("/account/profile", {
+    method: "PATCH",
+    token,
+    body: JSON.stringify({ displayName }),
+  });
+}
+
+export function changePassword(token: string, currentPassword: string, newPassword: string) {
+  return apiRequest<void>("/account/change-password", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
 export function listTenants(token: string) {
   return apiRequest<TenantMembership[]>("/tenants", { token });
 }
 
 export function listInvitations(token: string) {
   return apiRequest<TenantMembership[]>("/invitations", { token });
+}
+
+export function getAccountCapabilities(token: string) {
+  return apiRequest<AccountCapabilities>("/account/capabilities", { token });
 }
 
 export function createTenant(token: string, name: string, slug: string) {
@@ -53,11 +89,34 @@ export function createTenant(token: string, name: string, slug: string) {
   );
 }
 
-export function inviteMember(token: string, tenantId: string, email: string) {
-  return apiRequest(`/tenants/${tenantId}/invitations`, {
+export function updateTenant(token: string, tenantId: string, name: string) {
+  return apiRequest<{ tenantId: string; name: string; slug: string }>(`/tenants/${tenantId}`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function inviteMember(
+  token: string,
+  tenantId: string,
+  payload: {
+    email: string;
+    role?: "Admin" | "Member";
+    workspaceAccess?: { workspaceId: string; accessLevel: WorkspaceAccessLevel }[];
+  },
+) {
+  return apiRequest<InvitationCreated>(`/tenants/${tenantId}/invitations`, {
     method: "POST",
     token,
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({
+      email: payload.email,
+      role: payload.role ?? "Member",
+      workspaceAccess: payload.workspaceAccess?.map((item) => ({
+        workspaceId: item.workspaceId,
+        accessLevel: item.accessLevel,
+      })),
+    }),
   });
 }
 
@@ -84,11 +143,44 @@ export function getWorkspace(
   });
 }
 
-export function createWorkspace(token: string, tenantId: string, name: string) {
+export function createWorkspace(
+  token: string,
+  tenantId: string,
+  payload: {
+    name: string;
+    description?: string | null;
+    startDate?: string | null;
+  },
+) {
   return apiRequest<Workspace>(`/tenants/${tenantId}/workspaces`, {
     method: "POST",
     token,
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({
+      name: payload.name,
+      description: payload.description ?? null,
+      startDate: payload.startDate ?? null,
+    }),
+  });
+}
+
+export function updateWorkspace(
+  token: string,
+  tenantId: string,
+  workspaceId: string,
+  payload: {
+    name: string;
+    description?: string | null;
+    startDate?: string | null;
+  },
+) {
+  return apiRequest<Workspace>(`/tenants/${tenantId}/workspaces/${workspaceId}`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify({
+      name: payload.name,
+      description: payload.description ?? null,
+      startDate: payload.startDate ?? null,
+    }),
   });
 }
 
@@ -99,12 +191,34 @@ export function listProjects(token: string, tenantId: string, workspaceId: strin
   });
 }
 
-export function createProject(token: string, tenantId: string, workspaceId: string, name: string) {
+export function createProject(
+  token: string,
+  tenantId: string,
+  workspaceId: string,
+  payload: { name: string; description?: string | null; accentToken?: string | null },
+) {
   return apiRequest<Project>(`/tenants/${tenantId}/workspaces/${workspaceId}/projects`, {
     method: "POST",
     token,
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(payload),
   });
+}
+
+export function updateProject(
+  token: string,
+  tenantId: string,
+  workspaceId: string,
+  projectId: string,
+  payload: { name: string; description?: string | null; accentToken?: string | null },
+) {
+  return apiRequest<Project>(
+    `/tenants/${tenantId}/workspaces/${workspaceId}/projects/${projectId}`,
+    {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function getProject(
@@ -324,6 +438,17 @@ export function createWorkspaceTag(
   });
 }
 
+export function listGlobalNotifications(token: string, signal?: AbortSignal) {
+  return apiRequest<GlobalNotificationInbox>("/notifications", { token, signal });
+}
+
+export function markGlobalNotificationRead(token: string, notificationId: string) {
+  return apiRequest<void>(`/notifications/${notificationId}/read`, {
+    method: "POST",
+    token,
+  });
+}
+
 export function listNotifications(token: string, tenantId: string, signal?: AbortSignal) {
   return apiRequest<WorkNotification[]>(`/tenants/${tenantId}/notifications`, { token, signal });
 }
@@ -349,6 +474,48 @@ export function listWorkspaceAccess(
     `/tenants/${tenantId}/members/${membershipId}/workspace-access`,
     { token, signal },
   );
+}
+
+export function replaceWorkspaceAccess(
+  token: string,
+  tenantId: string,
+  membershipId: string,
+  grants: Array<{ workspaceId: string; accessLevel: WorkspaceAccessLevel | null }>,
+) {
+  return apiRequest<WorkspaceAccess[]>(
+    `/tenants/${tenantId}/members/${membershipId}/workspace-access`,
+    {
+      method: "PUT",
+      token,
+      body: JSON.stringify({ grants }),
+    },
+  );
+}
+
+export function listWorkspaceMemberAccess(
+  token: string,
+  tenantId: string,
+  workspaceId: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<WorkspaceMemberAccess[]>(
+    `/tenants/${tenantId}/workspaces/${workspaceId}/member-access`,
+    { token, signal },
+  );
+}
+
+export function grantWorkspaceMemberAccess(
+  token: string,
+  tenantId: string,
+  workspaceId: string,
+  membershipIds: string[],
+  accessLevel: WorkspaceAccessLevel,
+) {
+  return apiRequest<void>(`/tenants/${tenantId}/workspaces/${workspaceId}/member-access`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ membershipIds, accessLevel }),
+  });
 }
 
 export function setWorkspaceAccess(
@@ -377,5 +544,87 @@ export function removeWorkspaceAccess(
   return apiRequest<void>(
     `/tenants/${tenantId}/members/${membershipId}/workspace-access/${workspaceId}`,
     { method: "DELETE", token },
+  );
+}
+
+export function listPendingInvitations(token: string, tenantId: string, signal?: AbortSignal) {
+  return apiRequest<PendingInvitation[]>(`/tenants/${tenantId}/invitations/pending`, {
+    token,
+    signal,
+  });
+}
+
+export function resendInvitation(token: string, tenantId: string, invitationId: string) {
+  return apiRequest<InvitationCreated>(
+    `/tenants/${tenantId}/invitations/${invitationId}/resend`,
+    { method: "POST", token },
+  );
+}
+
+export function revokeInvitation(token: string, tenantId: string, invitationId: string) {
+  return apiRequest<void>(`/tenants/${tenantId}/invitations/${invitationId}/revoke`, {
+    method: "POST",
+    token,
+  });
+}
+
+export function updateMemberRole(
+  token: string,
+  tenantId: string,
+  membershipId: string,
+  role: "Admin" | "Member",
+) {
+  return apiRequest<{ membershipId: string; role: string; status: string }>(
+    `/tenants/${tenantId}/members/${membershipId}/role`,
+    { method: "PATCH", token, body: JSON.stringify({ role }) },
+  );
+}
+
+export function suspendMember(token: string, tenantId: string, membershipId: string) {
+  return apiRequest<{ membershipId: string; role: string; status: string }>(
+    `/tenants/${tenantId}/members/${membershipId}/suspend`,
+    { method: "POST", token },
+  );
+}
+
+export function reactivateMember(token: string, tenantId: string, membershipId: string) {
+  return apiRequest<{ membershipId: string; role: string; status: string }>(
+    `/tenants/${tenantId}/members/${membershipId}/reactivate`,
+    { method: "POST", token },
+  );
+}
+
+export function removeMember(token: string, tenantId: string, membershipId: string) {
+  return apiRequest<{ membershipId: string; role: string; status: string }>(
+    `/tenants/${tenantId}/members/${membershipId}/remove`,
+    { method: "POST", token },
+  );
+}
+
+export function previewInvitation(token: string) {
+  return apiRequest<InvitationPreview>(`/invite/${encodeURIComponent(token)}`, {
+    skipUnauthorizedHandler: true,
+  });
+}
+
+export function acceptInvitationByToken(authToken: string, invitationToken: string) {
+  return apiRequest<{ membershipId: string; tenantId: string; role: string; status: string }>(
+    `/invite/${encodeURIComponent(invitationToken)}/accept`,
+    { method: "POST", token: authToken },
+  );
+}
+
+export function registerAndAcceptInvitation(
+  invitationToken: string,
+  displayName: string,
+  password: string,
+) {
+  return apiRequest<{ membershipId: string; tenantId: string; role: string; status: string }>(
+    `/invite/${encodeURIComponent(invitationToken)}/register`,
+    {
+      method: "POST",
+      body: JSON.stringify({ displayName, password }),
+      skipUnauthorizedHandler: true,
+    },
   );
 }

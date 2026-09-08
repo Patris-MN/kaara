@@ -25,5 +25,16 @@ Explicitly **out of scope**:
 
 ## Phase 1 status
 
-Architectural placeholder only. No plans, entitlement resolution, or checks are
-implemented in this phase.
+Architectural placeholder only. No plans, entitlement resolution, or tenant-scoped
+checks are implemented in this module yet.
+
+**Phase 8.1.3 — organization creation seam (global account scope):**
+
+- Contract lives in `PTS.SharedKernel`: `IOrganizationCreationEntitlementProvider`
+  and `OrganizationCreationEntitlement`.
+- **Pre-Billing development policy** is composed in `PTS.Host` via
+  `DevelopmentOrganizationCreationEntitlementProvider` (not in this module).
+- Future Billing/Entitlements work will supply the production provider without
+  direct `PTS.Modules.Billing` ↔ `PTS.Modules.Entitlements` references.
+
+See [ADR 0012](../../../docs/architecture/decisions/0012-global-account-authorization.md).

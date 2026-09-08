@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,12 +8,12 @@ import App from "../App";
 import { AuthProvider } from "../auth/AuthProvider";
 import enAuth from "../locales/en/auth.json";
 import enCommon from "../locales/en/common.json";
-import enNotifications from "../locales/en/notifications.json";
 import enTasks from "../locales/en/tasks.json";
 import enTenants from "../locales/en/tenants.json";
 import { TenantDirectoryProvider } from "../tenancy/TenantDirectoryProvider";
+import { deriveAccountCapabilities } from "../test/directoryFetchHandlers";
 import { clearSession, writeAccessToken } from "./session";
-import type { WorkNotification, WorkTask } from "./types";
+import type { GlobalNotification, WorkTask } from "./types";
 
 const authUser = {
   userId: "11111111-1111-1111-1111-111111111111",
@@ -73,16 +73,40 @@ const firstTask: WorkTask = {
   createdByDisplayName: "User A",
   createdByEmail: authUser.email,
   unseenActivityCount: 0,
-  capabilities: null,
+  capabilities: {
+    canEditDefinition: true,
+    canManageTags: true,
+    canReassign: true,
+    canComment: true,
+    canDelete: true,
+    allowedStatuses: ["Open", "InProgress", "Waiting", "Resolved", "Closed"],
+  },
 };
 
-const assignmentNotification: WorkNotification = {
+const viewOnlyTask: WorkTask = {
+  ...firstTask,
+  capabilities: {
+    canEditDefinition: false,
+    canManageTags: false,
+    canReassign: false,
+    canComment: false,
+    canDelete: false,
+    allowedStatuses: ["Open"],
+  },
+};
+
+const assignmentNotification: GlobalNotification = {
   notificationId: "15151515-1515-1515-1515-151515151515",
+  tenantId: tenantA.tenantId,
+  tenantName: tenantA.name,
   type: "TaskAssigned",
   taskId: firstTask.taskId,
   workspaceId: workspace.workspaceId,
   projectId: project.projectId,
+  taskTitle: firstTask.title,
+  projectName: project.name,
   isRead: false,
+  targetAvailable: true,
   createdAtUtc: "2026-08-29T00:00:00Z",
 };
 
@@ -123,18 +147,24 @@ async function enterApp(
   expect(await screen.findByLabelText(enTenants.selector)).toBeTruthy();
 }
 
-function shellHandlers(path: string, notifications: WorkNotification[] = []) {
+function shellHandlers(path: string, notifications: GlobalNotification[] = []) {
   if (path.endsWith("/auth/me")) {
     return json(authUser);
   }
-  if (path.endsWith("/tenants")) {
+  if (path === "/tenants") {
     return json([{ ...tenantA, role: "Owner" }]);
   }
   if (path.endsWith("/invitations")) {
     return json([]);
   }
-  if (path.endsWith("/notifications")) {
-    return json(notifications);
+  if (path === "/account/capabilities") {
+    return json(deriveAccountCapabilities([{ role: tenantA.role }]));
+  }
+  if (path === "/notifications") {
+    return json({
+      items: notifications,
+      unreadCount: notifications.filter((item) => !item.isRead).length,
+    });
   }
   return null;
 }
@@ -190,7 +220,7 @@ describe("phase 6 assignment tags and notifications UI", () => {
       return json({ error: "missing" }, 404);
     });
 
-    await user.click(await screen.findByRole("button", { name: enTasks.create }));
+    await user.click(await screen.findByRole("button", { name: enTasks.newTask }));
     const assignee = screen.getByLabelText(enTasks.assignTo);
     expect(assignee).toHaveProperty("value", "");
     expect(screen.getByRole("option", { name: enTasks.unassigned })).toBeTruthy();
@@ -198,12 +228,11 @@ describe("phase 6 assignment tags and notifications UI", () => {
     expect(screen.queryByRole("option", { name: /Invited/ })).toBeNull();
     expect(screen.queryByRole("option", { name: /Suspended/ })).toBeNull();
 
-    await user.type(screen.getByLabelText(enTasks.fields.title), "Assigned task");
+    fireEvent.change(screen.getByLabelText(enTasks.fields.title), { target: { value: "Assigned task" } });
     await user.selectOptions(assignee, memberMohammad.membershipId);
     expect(assignee).toHaveProperty("value", memberMohammad.membershipId);
     await user.click(screen.getByRole("button", { name: "Backend" }));
-    await user.click(screen.getByRole("button", { name: enTasks.create }));
-
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: enTasks.newTask }));
     expect(await screen.findByText("Assigned task")).toBeTruthy();
     expect(screen.getByText("Mohammad")).toBeTruthy();
     expect(lastCreate).toMatchObject({
@@ -238,6 +267,9 @@ describe("phase 6 assignment tags and notifications UI", () => {
       }
       if (path === `${taskBase}/tasks` && method === "GET") {
         return json(tasks);
+      }
+      if (path.endsWith("/seen")) {
+        return new Response(null, { status: 204 });
       }
       if (path.endsWith("/comments") || path.endsWith("/activity")) {
         return json([]);
@@ -297,8 +329,11 @@ describe("phase 6 assignment tags and notifications UI", () => {
       if (path.endsWith("/tenants")) {
         return json([tenantA]);
       }
-      if (path.endsWith("/invitations") || path.endsWith("/notifications") || path.endsWith("/assignable-members")) {
+      if (path.endsWith("/invitations") || path.endsWith("/assignable-members")) {
         return json([]);
+      }
+      if (path === "/notifications") {
+        return json({ items: [], unreadCount: 0 });
       }
       if (path.endsWith("/tags")) {
         return json([backendTag]);
@@ -309,14 +344,17 @@ describe("phase 6 assignment tags and notifications UI", () => {
       if (path === taskBase) {
         return json(project);
       }
+      if (path.endsWith("/seen")) {
+        return new Response(null, { status: 204 });
+      }
       if (path.endsWith("/comments") || path.endsWith("/activity")) {
         return json([]);
       }
       if (path.endsWith(`/tasks/${firstTask.taskId}`)) {
-        return json(firstTask);
+        return json(viewOnlyTask);
       }
       if (path.endsWith("/tasks")) {
-        return json([firstTask]);
+        return json([viewOnlyTask]);
       }
       return json({ error: "missing" }, 404);
     });
@@ -324,10 +362,13 @@ describe("phase 6 assignment tags and notifications UI", () => {
     expect(await screen.findByText("Kickoff")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /Kickoff/ }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
-    expect((screen.getByLabelText(enTasks.assignee) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByLabelText(enTasks.assignee)).toBeNull();
+    expect(screen.getByText(enTasks.assignee)).toBeTruthy();
     expect(screen.queryByPlaceholderText(enTasks.addTag)).toBeNull();
     expect(screen.queryByRole("button", { name: enTasks.removeTag })).toBeNull();
-  });
+    expect(screen.queryByRole("button", { name: enTasks.save })).toBeNull();
+    expect(screen.queryByPlaceholderText(enTasks.commentPlaceholder)).toBeNull();
+  }, 15000);
 
   it("lists assignment notifications, marks them read, and navigates", async () => {
     const user = userEvent.setup();
@@ -343,6 +384,9 @@ describe("phase 6 assignment tags and notifications UI", () => {
       }
       if (path.endsWith(`/workspaces/${workspace.workspaceId}`)) {
         return json(workspace);
+      }
+      if (path.endsWith("/seen")) {
+        return new Response(null, { status: 204 });
       }
       if (path.endsWith("/comments") || path.endsWith("/activity")) {
         return json([]);
@@ -364,10 +408,10 @@ describe("phase 6 assignment tags and notifications UI", () => {
     });
 
     expect(await screen.findByText("Kickoff")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: enNotifications.title }));
-    expect(screen.getByText(enNotifications.taskAssigned)).toBeTruthy();
-    expect(screen.getByText(enNotifications.markRead)).toBeTruthy();
-    await user.click(screen.getByText(enNotifications.taskAssigned));
+    await user.click(await screen.findByRole("button", { name: /Notifications, 1 unread/i }));
+    expect(screen.getByText("Org A · Task assigned")).toBeTruthy();
+    expect(screen.getByText("Kickoff was assigned to you")).toBeTruthy();
+    await user.click(screen.getByText("Kickoff was assigned to you"));
     await waitFor(() => {
       expect(markedRead).toBe(true);
     });
@@ -382,7 +426,7 @@ describe("phase 6 assignment tags and notifications UI", () => {
       if (path.endsWith("/tenants")) {
         return json([{ ...tenantA, role: "Owner" }]);
       }
-      if (path.endsWith("/notifications")) {
+      if (path === "/notifications") {
         return json({ error: "unauthenticated" }, 401);
       }
       if (path.endsWith("/invitations") || path.endsWith("/assignable-members") || path.endsWith("/tags")) {
@@ -414,7 +458,7 @@ describe("phase 6 assignment tags and notifications UI", () => {
       if (path.endsWith("/tenants")) {
         return json([{ ...tenantA, role: "Owner" }]);
       }
-      if (path.endsWith("/notifications")) {
+      if (path === "/notifications") {
         return json({ error: "forbidden" }, 403);
       }
       if (path.endsWith("/invitations") || path.endsWith("/assignable-members") || path.endsWith("/tags")) {

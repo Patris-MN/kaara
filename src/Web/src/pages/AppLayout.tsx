@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 
@@ -7,10 +7,12 @@ import { readSelectedTenantId, writeSelectedTenantId } from "../api/session";
 import { useAuth } from "../auth/AuthProvider";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { StatusBanner } from "../components/Ui";
+import { resolveActiveTenantId } from "../tenancy/activeTenant";
 import { useTenantDirectory } from "../tenancy/TenantDirectoryProvider";
 import { NotificationMenu } from "./NotificationMenu";
+import { UserMenu } from "../components/UserMenu";
 
-type IconName = "organization" | "workspace" | "project" | "task" | "logout" | "chevron";
+type IconName = "organization" | "workspace" | "members" | "project" | "task" | "logout" | "chevron";
 
 function AppIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -23,6 +25,12 @@ function AppIcon({ name }: { name: IconName }) {
       <>
         <path d="M3.5 7.5h7l2 2h8v10h-17z" />
         <path d="M3.5 7.5v-3h6l2 3" />
+      </>
+    ),
+    members: (
+      <>
+        <path d="M16 11a3 3 0 1 0-6 0 3 3 0 0 0 6 0Z" />
+        <path d="M8 18a6 6 0 0 1 8 0M4 20a6 6 0 0 1 7.5-5.7M20 20a6 6 0 0 0-7.5-5.7" />
       </>
     ),
     project: (
@@ -52,6 +60,23 @@ function AppIcon({ name }: { name: IconName }) {
   );
 }
 
+function DisabledNavLabel({
+  icon,
+  label,
+  hint,
+}: {
+  icon: IconName;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <span className="workspace-nav-disabled" aria-disabled="true" title={hint} aria-label={`${label}. ${hint}`}>
+      <AppIcon name={icon} />
+      <span>{label}</span>
+    </span>
+  );
+}
+
 function AppBrandMark() {
   return (
     <span className="app-brand-mark" aria-hidden="true">
@@ -68,10 +93,12 @@ export function AppLayout() {
   const { user, logout } = useAuth();
   const { tenants, error: directoryError } = useTenantDirectory();
   const navigate = useNavigate();
+  const location = useLocation();
   const params = useParams();
   const loadError = directoryError
     ? t(translationKeyForApiError(directoryError), { ns: "common" })
     : null;
+  const notice = (location.state as { notice?: string } | null)?.notice;
 
   useEffect(() => {
     if (!user || tenants.length === 0) {
@@ -99,7 +126,9 @@ export function AppLayout() {
     navigate(`/app/tenants/${tenantId}`);
   }
 
-  const currentTenant = tenants.find((tenant) => tenant.tenantId === params.tenantId);
+  const storedTenantId = user ? readSelectedTenantId(user.userId) : null;
+  const activeTenantId = resolveActiveTenantId(tenants, params.tenantId, storedTenantId);
+  const currentTenant = tenants.find((tenant) => tenant.tenantId === activeTenantId);
   const userName = user?.displayName ?? user?.email ?? "";
   const userInitial = userName.trim().charAt(0).toUpperCase() || "U";
 
@@ -119,40 +148,65 @@ export function AppLayout() {
             <AppIcon name="organization" />
             <span>{t("navigation:tenants")}</span>
           </NavLink>
-          {params.tenantId ? (
-            <NavLink to={`/app/tenants/${params.tenantId}`} end>
+          {activeTenantId ? (
+            <NavLink to={`/app/tenants/${activeTenantId}`} end>
               <AppIcon name="workspace" />
               <span>{t("navigation:workspaces")}</span>
             </NavLink>
           ) : (
-            <span className="workspace-nav-disabled">
-              <AppIcon name="workspace" />
-              <span>{t("navigation:workspaces")}</span>
-            </span>
+            <DisabledNavLabel
+              icon="workspace"
+              label={t("navigation:workspaces")}
+              hint={t("navigation:selectOrganizationFirst")}
+            />
           )}
-          {params.workspaceId && params.tenantId ? (
-            <NavLink to={`/app/tenants/${params.tenantId}/workspaces/${params.workspaceId}`}>
+          {activeTenantId ? (
+            <NavLink to={`/app/tenants/${activeTenantId}/members`}>
+              <AppIcon name="members" />
+              <span>{t("navigation:members")}</span>
+            </NavLink>
+          ) : (
+            <DisabledNavLabel
+              icon="members"
+              label={t("navigation:members")}
+              hint={t("navigation:selectOrganizationFirst")}
+            />
+          )}
+          {params.workspaceId && activeTenantId ? (
+            <NavLink to={`/app/tenants/${activeTenantId}/workspaces/${params.workspaceId}`}>
               <AppIcon name="project" />
               <span>{t("navigation:projects")}</span>
             </NavLink>
           ) : (
-            <span className="workspace-nav-disabled">
-              <AppIcon name="project" />
-              <span>{t("navigation:projects")}</span>
-            </span>
+            <DisabledNavLabel
+              icon="project"
+              label={t("navigation:projects")}
+              hint={
+                activeTenantId
+                  ? t("navigation:selectWorkspaceFirst")
+                  : t("navigation:selectOrganizationFirst")
+              }
+            />
           )}
-          {params.projectId && params.workspaceId && params.tenantId ? (
+          {params.projectId && params.workspaceId && activeTenantId ? (
             <NavLink
-              to={`/app/tenants/${params.tenantId}/workspaces/${params.workspaceId}/projects/${params.projectId}`}
+              to={`/app/tenants/${activeTenantId}/workspaces/${params.workspaceId}/projects/${params.projectId}`}
             >
               <AppIcon name="task" />
               <span>{t("navigation:tasks")}</span>
             </NavLink>
           ) : (
-            <span className="workspace-nav-disabled">
-              <AppIcon name="task" />
-              <span>{t("navigation:tasks")}</span>
-            </span>
+            <DisabledNavLabel
+              icon="task"
+              label={t("navigation:tasks")}
+              hint={
+                params.workspaceId
+                  ? t("navigation:selectProjectFirst")
+                  : activeTenantId
+                    ? t("navigation:selectWorkspaceFirst")
+                    : t("navigation:selectOrganizationFirst")
+              }
+            />
           )}
         </nav>
 
@@ -182,15 +236,21 @@ export function AppLayout() {
 
       <div className="workspace-main">
         <header className="workspace-topbar">
-          <div className="topbar-context">
-            <span>{t("tenants:selector")}</span>
-            <strong>{currentTenant?.name ?? t("tenants:allOrganizations")}</strong>
-          </div>
+          {params.tenantId ? (
+            <div className="topbar-context">
+              <span>{t("tenants:selector")}</span>
+              <strong>{currentTenant?.name ?? t("tenants:choose")}</strong>
+            </div>
+          ) : (
+            <div className="topbar-context">
+              <strong>{t("navigation:tenants")}</strong>
+            </div>
+          )}
           <div className="topbar-actions">
             <label className="tenant-switcher">
               <span>{t("tenants:selector")}</span>
               <select
-                value={params.tenantId ?? ""}
+                value={activeTenantId ?? ""}
                 onChange={(event) => onTenantChange(event.target.value)}
                 aria-label={t("tenants:selector")}
               >
@@ -204,14 +264,20 @@ export function AppLayout() {
             </label>
             <LanguageSwitcher />
             <NotificationMenu />
-            <div className="topbar-avatar" title={userName}>
-              {userInitial}
-            </div>
+            <UserMenu
+              onSignOut={() => {
+                logout();
+                navigate("/login");
+              }}
+            />
           </div>
         </header>
 
         <div className="workspace-content">
           {loadError ? <StatusBanner tone="error">{loadError}</StatusBanner> : null}
+          {notice ? (
+            <StatusBanner tone="success">{t(`tenants:feedback.${notice}`, { defaultValue: notice })}</StatusBanner>
+          ) : null}
           <main>
             <Outlet />
           </main>

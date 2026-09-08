@@ -13,11 +13,13 @@ import enAuth from "../locales/en/auth.json";
 import enCommon from "../locales/en/common.json";
 import enMembers from "../locales/en/members.json";
 import enProjects from "../locales/en/projects.json";
+import enNotifications from "../locales/en/notifications.json";
 import enTenants from "../locales/en/tenants.json";
 import enWorkspaces from "../locales/en/workspaces.json";
 import kuMembers from "../locales/ku/members.json";
 import kuProjects from "../locales/ku/projects.json";
 import { TenantDirectoryProvider } from "../tenancy/TenantDirectoryProvider";
+import { deriveAccountCapabilities } from "../test/directoryFetchHandlers";
 import { clearSession, writeAccessToken } from "./session";
 
 const authUser = {
@@ -51,12 +53,44 @@ const tenantB = {
   status: "Active",
 };
 
-const leopard = {
+type WorkspaceStub = {
+  workspaceId: string;
+  tenantId: string;
+  name: string;
+  description: string | null;
+  startDate: string | null;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  accessLevel: "View" | "Edit";
+  canManage: boolean;
+};
+
+function workspaceStub(
+  overrides: Partial<WorkspaceStub> & Pick<WorkspaceStub, "workspaceId" | "name">,
+): WorkspaceStub {
+  return {
+    description: null,
+    startDate: null,
+    createdAtUtc: "2026-08-29T10:00:00Z",
+    updatedAtUtc: "2026-08-30T12:00:00Z",
+    canManage: true,
+    accessLevel: "Edit" as const,
+    tenantId: tenantA.tenantId,
+    ...overrides,
+  };
+}
+
+const leopard = workspaceStub({
   workspaceId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
   tenantId: tenantA.tenantId,
   name: "Leopard",
+  description: "Big cat workspace",
+  startDate: "2026-01-15",
+  createdAtUtc: "2026-08-29T10:00:00Z",
+  updatedAtUtc: "2026-08-30T12:00:00Z",
   accessLevel: "View",
-};
+  canManage: false,
+});
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -82,9 +116,30 @@ function pathOf(input: RequestInfo | URL) {
   return raw.startsWith("http") ? new URL(raw).pathname : raw;
 }
 
-async function enterApp(fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>, path = "/app") {
+async function enterApp(
+  fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  path = "/app",
+  directory: {
+    getTenants?: () => { role: string }[];
+    getInvitations?: () => unknown[];
+  } = {},
+) {
+  const getTenants = directory.getTenants ?? (() => [tenantA]);
+  const getInvitations = directory.getInvitations ?? (() => []);
   writeAccessToken("token-a");
-  vi.stubGlobal("fetch", vi.fn(fetchImpl));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input, init) => {
+      const route = pathOf(input);
+      if (route === "/notifications") {
+        return json({ items: [], unreadCount: 0 });
+      }
+      if (route === "/account/capabilities") {
+        return json(deriveAccountCapabilities(getTenants(), getInvitations()));
+      }
+      return fetchImpl(input, init);
+    }),
+  );
   renderApp(path);
   expect(await screen.findByLabelText(enTenants.selector)).toBeTruthy();
 }
@@ -130,9 +185,14 @@ describe("phase 5 membership and resource authorization UI", () => {
         return json([]);
       }
       return json({ error: "missing" }, 404);
-    });
+    }, "/app", { getTenants: () => tenants, getInvitations: () => invitations });
 
-    expect(await screen.findByText(invitation.name)).toBeTruthy();
+    await user.click(
+      await screen.findByRole("button", {
+        name: enNotifications.attentionWithInvitations.replace("{{count}}", "1"),
+      }),
+    );
+    expect((await screen.findAllByText(invitation.name)).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: enTenants.accept }));
 
     await waitFor(() => {
@@ -161,17 +221,21 @@ describe("phase 5 membership and resource authorization UI", () => {
         return json({ error: "invitation_not_found" }, 400);
       }
       return json({ error: "missing" }, 404);
-    });
+    }, "/app", { getTenants: () => [], getInvitations: () => [invitation] });
 
-    expect(await screen.findByText(invitation.name)).toBeTruthy();
+    await user.click(
+      await screen.findByRole("button", {
+        name: enNotifications.attentionWithInvitations.replace("{{count}}", "1"),
+      }),
+    );
+    expect((await screen.findAllByText(invitation.name)).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: enTenants.accept }));
     expect((await screen.findByRole("alert")).textContent).toContain(enCommon.errors.invitation_not_found);
-    expect(screen.getByText(invitation.name)).toBeTruthy();
     expect(screen.getByRole("button", { name: enTenants.accept })).toBeTruthy();
     expect(screen.queryByRole("link", { name: new RegExp(invitation.name) })).toBeNull();
   });
 
-  it("shows member access management for owners and hides it for members", async () => {
+  it("does not show organization member administration on the workspace page", async () => {
     await enterApp(async (input) => {
       const path = pathOf(input);
       if (path.endsWith("/auth/me")) {
@@ -186,66 +250,17 @@ describe("phase 5 membership and resource authorization UI", () => {
       if (path.endsWith("/workspaces")) {
         return json([leopard]);
       }
-      if (path.includes("/members") && !path.includes("workspace-access")) {
-        return json([
-          {
-            membershipId: "m-owner",
-            userId: authUser.userId,
-            displayName: authUser.displayName,
-            email: authUser.email,
-            role: "Owner",
-            status: "Active",
-          },
-          {
-            membershipId: "m-member",
-            userId: "22222222-2222-2222-2222-222222222222",
-            displayName: "User B",
-            email: "b@example.test",
-            role: "Member",
-            status: "Active",
-          },
-        ]);
-      }
-      if (path.includes("/workspace-access")) {
+      if (path.includes("/members")) {
         return json([]);
       }
       return json({ error: "missing" }, 404);
     }, `/app/tenants/${tenantA.tenantId}`);
 
-    expect(await screen.findByText("User B")).toBeTruthy();
-    expect(
-      await screen.findByLabelText(
-        enMembers.accessLabel.replace("{{member}}", "User B").replace("{{workspace}}", "Leopard"),
-      ),
-    ).toBeTruthy();
-
-    cleanup();
-    clearSession();
-    vi.unstubAllGlobals();
-
-    await enterApp(async (input) => {
-      const path = pathOf(input);
-      if (path.endsWith("/auth/me")) {
-        return json(authUser);
-      }
-      if (path.endsWith("/tenants")) {
-        return json([{ ...tenantA, role: "Member" }]);
-      }
-      if (path.endsWith("/invitations")) {
-        return json([]);
-      }
-      if (path.endsWith("/workspaces")) {
-        return json([leopard]);
-      }
-      if (path.endsWith("/members")) {
-        return json({ error: "workspace_access_manage_forbidden" }, 403);
-      }
-      return json({ error: "missing" }, 404);
-    }, `/app/tenants/${tenantA.tenantId}`);
-
+    expect(await screen.findByRole("heading", { name: enWorkspaces.title })).toBeTruthy();
     expect(await screen.findByText("Leopard")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: enMembers.title })).toBeNull();
-    expect(screen.queryByRole("heading", { name: enWorkspaces.create })).toBeNull();
+    expect(screen.queryByText(enMembers.title)).toBeNull();
+    expect(screen.queryByLabelText(enTenants.inviteEmail)).toBeNull();
+    expect(screen.queryByRole("heading", { name: enWorkspaces.createWorkspace })).toBeNull();
   });
 
   it("hides a workspace with no access and treats unknown ids as not found", async () => {
@@ -290,7 +305,7 @@ describe("phase 5 membership and resource authorization UI", () => {
       return json({ error: "workspace_not_found" }, 404);
     }, `/app/tenants/${tenantA.tenantId}/workspaces/${leopard.workspaceId}`);
 
-    expect((await screen.findByRole("alert")).textContent).toContain(enCommon.errors.workspace_not_found);
+    expect(await screen.findByText(enCommon.errors.workspace_not_found)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: enProjects.create })).toBeNull();
   });
 
@@ -315,8 +330,8 @@ describe("phase 5 membership and resource authorization UI", () => {
       return json({ error: "missing" }, 404);
     }, `/app/tenants/${tenantA.tenantId}/workspaces/${leopard.workspaceId}`);
 
-    expect(await screen.findByText(enProjects.viewOnly)).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: enProjects.create })).toBeNull();
+    expect(await screen.findByText(enProjects.viewOnlyWorkspace)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: enProjects.newProject })).toBeNull();
 
     cleanup();
     clearSession();
@@ -342,7 +357,8 @@ describe("phase 5 membership and resource authorization UI", () => {
       return json({ error: "missing" }, 404);
     }, `/app/tenants/${tenantA.tenantId}/workspaces/${leopard.workspaceId}`);
 
-    expect(await screen.findByRole("heading", { name: enProjects.create })).toBeTruthy();
+    await screen.findByText(enProjects.emptyTitle);
+    expect(screen.getAllByRole("button", { name: enProjects.newProject }).length).toBeGreaterThan(0);
   });
 
   it("logs out on 401 and stays signed in on 403", async () => {
@@ -393,10 +409,10 @@ describe("phase 5 membership and resource authorization UI", () => {
     expect(screen.queryByRole("heading", { name: enAuth.signIn })).toBeNull();
   });
 
-  it("clears stale member state when switching tenants and ignores late responses", async () => {
-    let resolveTenantAMembers: ((response: Response) => void) | undefined;
-    const tenantAMembers = new Promise<Response>((resolve) => {
-      resolveTenantAMembers = resolve;
+  it("clears stale workspace state when switching tenants and ignores late responses", async () => {
+    let resolveTenantAWorkspaces: ((response: Response) => void) | undefined;
+    const tenantAWorkspaces = new Promise<Response>((resolve) => {
+      resolveTenantAWorkspaces = resolve;
     });
     const user = userEvent.setup();
 
@@ -412,53 +428,77 @@ describe("phase 5 membership and resource authorization UI", () => {
         return json([]);
       }
       if (path === `/tenants/${tenantA.tenantId}/workspaces`) {
-        return json([]);
+        return tenantAWorkspaces;
       }
       if (path === `/tenants/${tenantB.tenantId}/workspaces`) {
-        return json([]);
-      }
-      if (path === `/tenants/${tenantA.tenantId}/members`) {
-        return tenantAMembers;
-      }
-      if (path === `/tenants/${tenantB.tenantId}/members`) {
-        return json([
-          {
-            membershipId: "m-b",
-            userId: "33333333-3333-3333-3333-333333333333",
-            displayName: "Bee",
-            email: "bee@example.test",
-            role: "Admin",
-            status: "Active",
-          },
-        ]);
+        return json([workspaceStub({ workspaceId: "wb", name: "Bee", tenantId: tenantB.tenantId })]);
       }
       return json({ error: "missing" }, 404);
     }, `/app/tenants/${tenantA.tenantId}`);
 
-    expect(await screen.findByRole("heading", { name: enMembers.title })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: enWorkspaces.title })).toBeTruthy();
     expect(screen.queryByText("Bee")).toBeNull();
     expect(screen.queryByText("Aye")).toBeNull();
 
     await user.selectOptions(screen.getByRole("combobox", { name: enTenants.selector }), tenantB.tenantId);
     expect(await screen.findByText("Bee")).toBeTruthy();
 
-    resolveTenantAMembers?.(
-      json([
-        {
-          membershipId: "m-a",
-          userId: authUser.userId,
-          displayName: "Aye",
-          email: authUser.email,
-          role: "Owner",
-          status: "Active",
-        },
-      ]),
+    resolveTenantAWorkspaces?.(
+      json([workspaceStub({ workspaceId: "wa", name: "Aye", tenantId: tenantA.tenantId })]),
     );
 
     await waitFor(() => {
       expect(screen.getByText("Bee")).toBeTruthy();
     });
     expect(screen.queryByText("Aye")).toBeNull();
+  });
+
+  it("shows only workspaces for the active tenant when switching organizations", async () => {
+    const user = userEvent.setup();
+    const workspacesByTenant: Record<string, ReturnType<typeof workspaceStub>[]> = {
+      [tenantA.tenantId]: [
+        workspaceStub({ workspaceId: "wa-1", name: "A-Workspace-1", tenantId: tenantA.tenantId }),
+        workspaceStub({ workspaceId: "wa-2", name: "A-Workspace-2", tenantId: tenantA.tenantId }),
+      ],
+      [tenantB.tenantId]: [
+        workspaceStub({ workspaceId: "wb-1", name: "B-Workspace-1", tenantId: tenantB.tenantId }),
+      ],
+    };
+
+    await enterApp(async (input) => {
+      const path = pathOf(input);
+      if (path.endsWith("/auth/me")) {
+        return json(authUser);
+      }
+      if (path.endsWith("/tenants")) {
+        return json([tenantA, tenantB]);
+      }
+      if (path.endsWith("/invitations")) {
+        return json([]);
+      }
+      if (path.endsWith("/members")) {
+        return json([]);
+      }
+      const match = path.match(/^\/tenants\/([^/]+)\/workspaces$/);
+      if (match) {
+        return json(workspacesByTenant[match[1]] ?? []);
+      }
+      return json({ error: "missing" }, 404);
+    }, `/app/tenants/${tenantA.tenantId}`);
+
+    expect(await screen.findByText("A-Workspace-1")).toBeTruthy();
+    expect(screen.getByText("A-Workspace-2")).toBeTruthy();
+    expect(screen.queryByText("B-Workspace-1")).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText(enTenants.selector), tenantB.tenantId);
+    expect(await screen.findByText("B-Workspace-1")).toBeTruthy();
+    expect(screen.queryByText("A-Workspace-1")).toBeNull();
+    expect(screen.queryByText("A-Workspace-2")).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText(enTenants.selector), tenantA.tenantId);
+    expect(await screen.findByText("A-Workspace-1")).toBeTruthy();
+    expect(screen.getByText("A-Workspace-2")).toBeTruthy();
+    expect(screen.queryByText("B-Workspace-1")).toBeNull();
   });
 
   it("resolves member and project strings in English, Arabic, and Kurdish and keeps RTL", () => {

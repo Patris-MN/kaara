@@ -4,6 +4,7 @@ using PTS.Modules.Identity;
 using PTS.Modules.PlatformAdministration;
 using PTS.Modules.Tenancy;
 using PTS.Modules.WorkManagement;
+using PTS.SharedKernel.Text;
 
 namespace PTS.Host.Persistence;
 
@@ -60,12 +61,17 @@ public class AppDbContext : DbContext
 
     public DbSet<PlatformAdministrator> PlatformAdministrators => Set<PlatformAdministrator>();
 
+    public DbSet<TenantInvitation> TenantInvitations => Set<TenantInvitation>();
+
+    public DbSet<InvitationWorkspaceGrant> InvitationWorkspaceGrants => Set<InvitationWorkspaceGrant>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new UserConfiguration());
         modelBuilder.ApplyConfiguration(new UserCredentialConfiguration());
         modelBuilder.ApplyConfiguration(new TenantConfiguration());
         modelBuilder.ApplyConfiguration(new MembershipConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantInvitationConfiguration());
         modelBuilder.ApplyConfiguration(new TenantIsolationTestRecordConfiguration());
         modelBuilder.ApplyConfiguration(new WorkspaceConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
@@ -78,6 +84,7 @@ public class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new WorkTaskActivityConfiguration());
         modelBuilder.ApplyConfiguration(new WorkTaskReadStateConfiguration());
         modelBuilder.ApplyConfiguration(new PlatformAdministratorConfiguration());
+        modelBuilder.ApplyConfiguration(new InvitationWorkspaceGrantConfiguration());
 
         modelBuilder.Entity<UserCredential>()
             .HasOne<User>()
@@ -232,5 +239,57 @@ public class AppDbContext : DbContext
             .HasForeignKey(a => a.UserId)
             .HasConstraintName("fk_platform_administrators_users_user_id")
             .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    public override int SaveChanges()
+    {
+        StampWorkspaceTimestamps();
+        StampResourceNameNormalized();
+        return base.SaveChanges();
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        StampWorkspaceTimestamps();
+        StampResourceNameNormalized();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    private void StampWorkspaceTimestamps()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var entry in ChangeTracker.Entries<Workspace>())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified))
+            {
+                continue;
+            }
+
+            if (entry.Entity.CreatedAtUtc == default)
+            {
+                entry.Entity.CreatedAtUtc = now;
+            }
+
+            entry.Entity.UpdatedAtUtc ??= entry.Entity.CreatedAtUtc;
+        }
+    }
+
+    private void StampResourceNameNormalized()
+    {
+        foreach (var entry in ChangeTracker.Entries<Workspace>())
+        {
+            if (entry.State is EntityState.Added or EntityState.Modified)
+            {
+                entry.Entity.NameNormalized = ResourceNameNormalizer.Normalize(entry.Entity.Name);
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<Project>())
+        {
+            if (entry.State is EntityState.Added or EntityState.Modified)
+            {
+                entry.Entity.NameNormalized = ResourceNameNormalizer.Normalize(entry.Entity.Name);
+            }
+        }
     }
 }

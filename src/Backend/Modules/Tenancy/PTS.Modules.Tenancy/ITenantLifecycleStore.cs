@@ -1,12 +1,14 @@
 namespace PTS.Modules.Tenancy;
 
 /// <summary>
-/// Narrow persistence port for tenant create / invite / accept. Not a generic
+/// Narrow persistence port for tenant create / update / invite / accept. Not a generic
 /// repository. Implemented by the Host so Tenancy never references EF/Npgsql.
 /// </summary>
 public interface ITenantLifecycleStore
 {
     Task CreateTenantWithOwnerAsync(Tenant tenant, Membership ownerMembership, CancellationToken cancellationToken = default);
+
+    Task<Tenant> UpdateTenantAsync(Guid userId, Guid tenantId, string name, CancellationToken cancellationToken = default);
 
     Task<Membership?> FindMembershipAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken = default);
 

@@ -1,0 +1,30 @@
+{
+  "title": "قبول الدعوة",
+  "eyebrow": "دعوة إلى مؤسسة",
+  "previewIntro": "تمت دعوتك للانضمام إلى {{organization}}.",
+  "invitedEmail": "البريد المدعو",
+  "invitedRole": "مدعو كـ {{role}}",
+  "invitedBy": "دعوة من {{name}}",
+  "workspaceGrants": "صلاحيات مساحات العمل المرفقة",
+  "confirmPassword": "تأكيد كلمة المرور",
+  "accept": "قبول الدعوة",
+  "accepting": "جارٍ القبول…",
+  "createAndAccept": "إنشاء حساب وقبول الدعوة",
+  "createAccount": "إنشاء حساب",
+  "expiresAt": "تنتهي في {{date}}",
+  "wrongAccount": "أُرسلت هذه الدعوة إلى {{invitedEmail}}. أنت مسجّل الدخول بـ {{signedInEmail}}.",
+  "switchAccount": "تسجيل الخروج وتبديل الحساب",
+  "loginPrompt": "سجّل الدخول بالبريد الذي تلقى هذه الدعوة لقبولها.",
+  "acceptedTitle": "تم قبول الدعوة",
+  "acceptedBody": "مرحبًا بك في {{organization}}.",
+  "errors": {
+    "invalid": "رابط الدعوة هذا غير صالح.",
+    "expired": "انتهت صلاحية هذه الدعوة.",
+    "revoked": "لم تعد هذه الدعوة نشطة.",
+    "alreadyAccepted": "تم قبول هذه الدعوة مسبقًا.",
+    "emailMismatch": "سجّل الدخول بالبريد الذي تلقى هذه الدعوة.",
+    "alreadyMember": "أنت عضو بالفعل في هذه المؤسسة.",
+    "passwordMismatch": "كلمتا المرور غير متطابقتين.",
+    "generic": "تعذّر معالجة هذه الدعوة."
+  }
+}

@@ -53,6 +53,23 @@ public sealed class TenantLifecycleService : ITenantLifecycleService
         return tenant;
     }
 
+    public async Task<Tenant> UpdateTenantAsync(Guid tenantId, string name, CancellationToken cancellationToken = default)
+    {
+        var userId = RequireUser();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Name is required.", nameof(name));
+        }
+
+        var trimmed = name.Trim();
+        if (trimmed.Length > 200)
+        {
+            throw new ArgumentException("Name is too long.", nameof(name));
+        }
+
+        return await _store.UpdateTenantAsync(userId, tenantId, trimmed, cancellationToken);
+    }
+
     public async Task<Membership> InviteAsync(Guid tenantId, Guid inviteeUserId, CancellationToken cancellationToken = default)
     {
         var actingUserId = RequireUser();

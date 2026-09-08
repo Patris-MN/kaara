@@ -42,4 +42,10 @@ public sealed class WorkTask
     public DateTimeOffset CreatedAtUtc { get; set; }
 
     public DateTimeOffset UpdatedAtUtc { get; set; }
+
+    /// <summary>
+    /// Set when a non-creator membership views or interacts with this task.
+    /// Used for delete eligibility without cross-member read-state visibility.
+    /// </summary>
+    public bool HasExternalEngagement { get; set; }
 }

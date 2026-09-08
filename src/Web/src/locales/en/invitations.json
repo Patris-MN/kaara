@@ -1,0 +1,30 @@
+{
+  "title": "Accept invitation",
+  "eyebrow": "Organization invitation",
+  "previewIntro": "You have been invited to join {{organization}}.",
+  "invitedEmail": "Invited email",
+  "invitedRole": "Invited as {{role}}",
+  "invitedBy": "Invited by {{name}}",
+  "workspaceGrants": "Workspace access included",
+  "confirmPassword": "Confirm password",
+  "accept": "Accept invitation",
+  "accepting": "Accepting…",
+  "createAndAccept": "Create account and accept",
+  "createAccount": "Create account",
+  "expiresAt": "Expires {{date}}",
+  "wrongAccount": "This invitation was sent to {{invitedEmail}}. You are signed in as {{signedInEmail}}.",
+  "switchAccount": "Sign out and switch account",
+  "loginPrompt": "Sign in with the invited email to accept this invitation.",
+  "acceptedTitle": "Invitation accepted",
+  "acceptedBody": "Welcome to {{organization}}.",
+  "errors": {
+    "invalid": "This invitation link is not valid.",
+    "expired": "This invitation has expired.",
+    "revoked": "This invitation is no longer active.",
+    "alreadyAccepted": "This invitation was already accepted.",
+    "emailMismatch": "Sign in with the email address that received this invitation.",
+    "alreadyMember": "You are already a member of this organization.",
+    "passwordMismatch": "Passwords do not match.",
+    "generic": "This invitation could not be processed."
+  }
+}

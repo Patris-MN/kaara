@@ -1,32 +1,48 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
-
-namespace PTS.Modules.WorkManagement;
-
-public sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
-{
-    public void Configure(EntityTypeBuilder<Project> builder)
-    {
-        builder.ToTable("projects");
-
-        builder.HasKey(p => p.Id).HasName("pk_projects");
-        builder.Property(p => p.Id).HasColumnName("id");
-        builder.Property(p => p.TenantId).HasColumnName("tenant_id").IsRequired();
-        builder.Property(p => p.WorkspaceId).HasColumnName("workspace_id").IsRequired();
-        builder.Property(p => p.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
-        builder.Property(p => p.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
-
-        builder.HasIndex(p => p.TenantId).HasDatabaseName("ix_projects_tenant_id");
-        builder.HasIndex(p => p.WorkspaceId).HasDatabaseName("ix_projects_workspace_id");
-
-        builder.HasAlternateKey(p => new { p.TenantId, p.WorkspaceId, p.Id })
-            .HasName("ak_projects_tenant_id_workspace_id_id");
-
-        builder.HasOne<Workspace>()
-            .WithMany()
-            .HasForeignKey(p => new { p.TenantId, p.WorkspaceId })
-            .HasPrincipalKey(w => new { w.TenantId, w.Id })
-            .HasConstraintName("fk_projects_workspaces_tenant_id_workspace_id")
-            .OnDelete(DeleteBehavior.Restrict);
-    }
-}
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace PTS.Modules.WorkManagement;
+
+public sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
+{
+    public const int DescriptionMaxLength = 500;
+    public const int AccentTokenMaxLength = 20;
+
+    public void Configure(EntityTypeBuilder<Project> builder)
+    {
+        builder.ToTable("projects");
+
+        builder.HasKey(p => p.Id).HasName("pk_projects");
+        builder.Property(p => p.Id).HasColumnName("id");
+        builder.Property(p => p.TenantId).HasColumnName("tenant_id").IsRequired();
+        builder.Property(p => p.WorkspaceId).HasColumnName("workspace_id").IsRequired();
+        builder.Property(p => p.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
+        builder.Property(p => p.NameNormalized)
+            .HasColumnName("name_normalized")
+            .HasMaxLength(200)
+            .IsRequired();
+        builder.Property(p => p.Description)
+            .HasColumnName("description")
+            .HasMaxLength(DescriptionMaxLength);
+        builder.Property(p => p.AccentToken)
+            .HasColumnName("accent_token")
+            .HasMaxLength(AccentTokenMaxLength);
+        builder.Property(p => p.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+
+        builder.HasIndex(p => p.TenantId).HasDatabaseName("ix_projects_tenant_id");
+        builder.HasIndex(p => p.WorkspaceId).HasDatabaseName("ix_projects_workspace_id");
+        builder.HasIndex(p => new { p.TenantId, p.WorkspaceId, p.NameNormalized })
+            .IsUnique()
+            .HasDatabaseName("ux_projects_tenant_workspace_name_normalized");
+
+        builder.HasAlternateKey(p => new { p.TenantId, p.WorkspaceId, p.Id })
+            .HasName("ak_projects_tenant_id_workspace_id_id");
+
+        builder.HasOne<Workspace>()
+            .WithMany()
+            .HasForeignKey(p => new { p.TenantId, p.WorkspaceId })
+            .HasPrincipalKey(w => new { w.TenantId, w.Id })
+            .HasConstraintName("fk_projects_workspaces_tenant_id_workspace_id")
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}

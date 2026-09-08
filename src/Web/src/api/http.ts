@@ -43,13 +43,14 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (!skipUnauthorizedHandler) {
       unauthorizedHandler?.();
     }
-    const code = await readErrorCode(response, "unauthenticated");
+    const { code } = await readErrorBody(response, "unauthenticated");
     throw new ApiError(401, code);
   }
 
   if (!response.ok) {
     const fallback = response.status === 403 ? "forbidden" : "request_failed";
-    throw new ApiError(response.status, await readErrorCode(response, fallback));
+    const { code, existingName, existingKey } = await readErrorBody(response, fallback);
+    throw new ApiError(response.status, code, { existingName, existingKey });
   }
 
   if (response.status === 204) {
@@ -63,11 +64,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return JSON.parse(text) as T;
 }
 
-async function readErrorCode(response: Response, fallback: string): Promise<string> {
+async function readErrorBody(
+  response: Response,
+  fallback: string,
+): Promise<{ code: string; existingName?: string; existingKey?: string }> {
   try {
     const body = (await response.json()) as ApiErrorBody;
-    return body.error || fallback;
+    return {
+      code: body.error || fallback,
+      existingName: body.existingName,
+      existingKey: body.existingKey,
+    };
   } catch {
-    return fallback;
+    return { code: fallback };
   }
 }

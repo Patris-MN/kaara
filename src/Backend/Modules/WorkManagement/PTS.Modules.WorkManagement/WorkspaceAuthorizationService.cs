@@ -52,4 +52,11 @@ public sealed class WorkspaceAuthorizationService
 
     public bool CanManageAccess(bool hasImplicitFullAccess)
         => hasImplicitFullAccess;
+
+    /// <summary>
+    /// Owner/Admin may edit project metadata (name, description, accent).
+    /// Distinct from workspace Edit access used for project/task work.
+    /// </summary>
+    public bool CanManageProjectMetadata(bool hasImplicitFullAccess)
+        => hasImplicitFullAccess;
 }

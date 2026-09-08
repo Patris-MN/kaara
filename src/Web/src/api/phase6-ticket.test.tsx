@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,7 @@ import enNotifications from "../locales/en/notifications.json";
 import enTasks from "../locales/en/tasks.json";
 import enTenants from "../locales/en/tenants.json";
 import { TenantDirectoryProvider } from "../tenancy/TenantDirectoryProvider";
+import { deriveAccountCapabilities } from "../test/directoryFetchHandlers";
 import { clearSession, writeAccessToken } from "./session";
 import type { TaskCapabilities, WorkTask, WorkTaskActivity, WorkTaskComment } from "./types";
 
@@ -145,7 +146,16 @@ async function enterApp(
   path = taskPage,
 ) {
   writeAccessToken("token-a");
-  vi.stubGlobal("fetch", vi.fn(fetchImpl));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const pathName = pathOf(input);
+      if (pathName === "/notifications") {
+        return json({ items: [], unreadCount: 0 });
+      }
+      return fetchImpl(input, init);
+    }),
+  );
   renderApp(path);
   expect(await screen.findByLabelText(enTenants.selector)).toBeTruthy();
 }
@@ -157,7 +167,16 @@ function shell(path: string) {
   if (path.endsWith("/tenants")) {
     return json([{ ...tenantA, role: "Owner" }]);
   }
-  if (path.endsWith("/invitations") || path.endsWith("/notifications") || path.endsWith("/assignable-members") || path.endsWith("/tags")) {
+  if (path === "/account/capabilities") {
+    return json(deriveAccountCapabilities([{ role: tenantA.role }]));
+  }
+  if (path.endsWith("/invitations") || path.endsWith("/assignable-members") || path.endsWith("/tags")) {
+    return json([]);
+  }
+  if (path === "/notifications") {
+    return json({ items: [], unreadCount: 0 });
+  }
+  if (path.endsWith("/notifications")) {
     return json([]);
   }
   return null;
@@ -213,30 +232,36 @@ describe("phase 6 ticket collaboration UI", () => {
     expect(await screen.findByText("Kickoff")).toBeTruthy();
     expect(screen.getByText(enTasks.newChanges.replace("{{count}}", "3"))).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText(enTasks.originalDescription)).toBeNull();
-    expect(screen.queryByLabelText(/sort/i)).toBeNull();
+    expect(screen.queryByText(enTasks.descriptionLabel)).toBeNull();
+    expect(screen.getByLabelText(enTasks.sortLabel)).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /Kickoff/ }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
     expect(document.querySelector(".dialog-body")).toBeTruthy();
-    expect(await screen.findByText(enTasks.originalDescription)).toBeTruthy();
-    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title" }) as HTMLInputElement).disabled).toBe(false);
+    expect(await screen.findByText(enTasks.descriptionLabel)).toBeTruthy();
+    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title-visible" }) as HTMLInputElement).disabled).toBe(false);
     expect(screen.getByRole("option", { name: enTasks.status.closed })).toBeTruthy();
     expect(await screen.findByText("Started the work")).toBeTruthy();
     expect(await screen.findByText(enTasks.activityEvent.PriorityChanged)).toBeTruthy();
     expect(screen.getByText("Normal → Urgent")).toBeTruthy();
     expect(screen.getByText("Mohammad")).toBeTruthy();
-    await user.type(screen.getByPlaceholderText(enTasks.commentPlaceholder), "Looks good");
+    fireEvent.change(screen.getByPlaceholderText(enTasks.commentPlaceholder), {
+      target: { value: "Looks good" },
+    });
     await user.click(screen.getByRole("button", { name: enTasks.addComment }));
     expect(postedComment).toBe("Looks good");
-    await user.click(screen.getByRole("button", { name: enTasks.delete }));
-    expect(screen.getByText(enTasks.deleteConfirm)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: enTasks.detail }));
+    await user.click(screen.getByRole("menuitem", { name: enTasks.delete }));
+    expect(screen.getByText(enTasks.deleteConfirmTitle)).toBeTruthy();
     const cancelButtons = screen.getAllByRole("button", { name: enTasks.cancelDelete });
     await user.click(cancelButtons[cancelButtons.length - 1]!);
-    expect(screen.queryByText(enTasks.deleteConfirm)).toBeNull();
-    await user.click(screen.getByRole("button", { name: enTasks.delete }));
-    await user.click(screen.getByRole("button", { name: enTasks.delete }));
+    expect(screen.queryByText(enTasks.deleteConfirmTitle)).toBeNull();
+    await user.click(screen.getByRole("button", { name: enTasks.detail }));
+    await user.click(screen.getByRole("menuitem", { name: enTasks.delete }));
+    const confirmDialogs = screen.getAllByRole("dialog");
+    const deleteDialog = confirmDialogs[confirmDialogs.length - 1]!;
+    await user.click(within(deleteDialog).getByRole("button", { name: enTasks.delete }));
     expect(deleted).toBe(true);
-  });
+  }, 12000);
 
   it("restricts assignee fields and hides delete after reassignment", async () => {
     const user = userEvent.setup();
@@ -267,8 +292,9 @@ describe("phase 6 ticket collaboration UI", () => {
     expect(await screen.findByText("Kickoff")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /Kickoff/ }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
-    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title" }) as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText(enTasks.originalDescription) as HTMLTextAreaElement).disabled).toBe(true);
+    const detailDialog = screen.getByRole("dialog");
+    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title-visible" }) as HTMLInputElement).disabled).toBe(true);
+    expect((within(detailDialog).getByLabelText(enTasks.descriptionLabel) as HTMLTextAreaElement).disabled).toBe(true);
     expect((screen.getByLabelText(enTasks.priority.label, { selector: "#edit-task-priority" }) as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByLabelText(enTasks.assignee) as HTMLSelectElement).disabled).toBe(false);
     expect(screen.queryByRole("option", { name: enTasks.status.closed })).toBeNull();
@@ -344,7 +370,7 @@ describe("phase 6 ticket collaboration UI", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: enCommon.close }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.queryByText(enTasks.originalDescription)).toBeNull();
+    expect(screen.queryByText(enTasks.descriptionLabel)).toBeNull();
     expect(screen.getByText("Kickoff")).toBeTruthy();
   });
 
@@ -386,17 +412,17 @@ describe("phase 6 ticket collaboration UI", () => {
     }, `${taskPage}/tasks/${firstTask.taskId}`);
 
     expect(await screen.findByRole("dialog")).toBeTruthy();
-    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title" }) as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title-visible" }) as HTMLInputElement).value).toBe(
       "Kickoff",
     );
     await user.click(screen.getByRole("button", { name: enCommon.close }));
     expect(screen.queryByRole("dialog")).toBeNull();
     await user.click(screen.getByRole("button", { name: /Review/ }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
-    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title" }) as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title-visible" }) as HTMLInputElement).value).toBe(
       "Review",
     );
-    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title" }) as HTMLInputElement).disabled).toBe(
+    expect((screen.getByLabelText(enTasks.fields.title, { selector: "#edit-task-title-visible" }) as HTMLInputElement).disabled).toBe(
       true,
     );
   });

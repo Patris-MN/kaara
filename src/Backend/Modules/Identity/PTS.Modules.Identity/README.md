@@ -31,7 +31,8 @@ security. This module must never expose a `TenantId` on its core entities.
   or any other module directly. Cross-module interaction, when needed, goes through
   contracts in `PTS.SharedKernel` or composition in `PTS.Host`.
 
-## Phase 1 status
+## Current status (Phase 7 — no Identity product change)
 
-Architectural placeholder only. No authentication, registration, or storage is
-implemented in this phase.
+`User` persistence, email/password register and login, and JWT issuance are
+implemented. MFA and stored language preference are not. HTTP adapters live in
+Host. Product baseline: repository root `README.md`.

@@ -8,4 +8,12 @@ public interface IUserAuthenticationService
     /// Callers must not learn whether the email exists from this method's
     /// return value alone — both unknown email and wrong password yield null.</summary>
     Task<User?> AuthenticateAsync(string email, string password, CancellationToken cancellationToken = default);
+
+    Task<User> UpdateDisplayNameAsync(Guid userId, string displayName, CancellationToken cancellationToken = default);
+
+    Task ChangePasswordAsync(
+        Guid userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default);
 }

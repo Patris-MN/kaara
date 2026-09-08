@@ -42,4 +42,37 @@ internal sealed class EfUserAccountStore : IUserAccountStore
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
     }
+
+    public async Task<UserCredential?> FindCredentialByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await PostgresRlsSettings.SetCurrentUserIdAsync(db, userId, cancellationToken);
+
+        return await db.UserCredentials
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId == userId, cancellationToken);
+    }
+
+    public async Task UpdateUserAsync(User user, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await PostgresRlsSettings.SetCurrentUserIdAsync(db, user.Id, cancellationToken);
+
+        db.Users.Update(user);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task UpdateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await PostgresRlsSettings.SetCurrentUserIdAsync(db, credential.UserId, cancellationToken);
+
+        db.UserCredentials.Update(credential);
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
 }

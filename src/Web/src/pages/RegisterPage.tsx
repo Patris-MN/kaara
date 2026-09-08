@@ -2,41 +2,50 @@ import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { isApiError, translationKeyForApiError } from "../api/errors";
+import { isApiError } from "../api/errors";
 import { useAuth } from "../auth/AuthProvider";
+import { AuthDivider, GoogleSignInButton } from "../auth/GoogleSignInButton";
+import { isRegistrationPasswordReady, PasswordFieldGroup } from "../auth/PasswordFieldGroup";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
-import { Field, StatusBanner, TextLink } from "../components/Ui";
+import { Field, TextLink } from "../components/Ui";
+import { useFeedback } from "../feedback/FeedbackProvider";
 
 export function RegisterPage() {
   const { t } = useTranslation(["auth", "common"]);
   const { register } = useAuth();
+  const { show } = useFeedback();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const passwordReady = isRegistrationPasswordReady(password, confirmPassword);
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (submitting) {
-      return;
-    }
-    if (password.length < 8) {
-      setError(t("auth:errors.passwordTooShort"));
+    if (submitting || !passwordReady) {
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
       await register(email, password, displayName);
+      show({
+        tone: "success",
+        title: t("auth:registerSuccessTitle"),
+        body: t("auth:registerSuccessBody"),
+      });
       navigate("/login", { replace: true, state: { registered: true } });
     } catch (cause) {
       if (isApiError(cause) && cause.code === "email_already_registered") {
-        setError(t("auth:errors.emailTaken"));
+        setError(t("auth:errors.emailTakenSignIn"));
       } else {
-        setError(t(translationKeyForApiError(cause), { ns: "common" }));
+        setError(t("auth:registerFailed"));
       }
     } finally {
       setSubmitting(false);
@@ -67,16 +76,28 @@ export function RegisterPage() {
               <p>{t("auth:registerDescription")}</p>
             </div>
 
-            <form className="login-form" onSubmit={onSubmit} noValidate>
-              {error ? <StatusBanner tone="error">{error}</StatusBanner> : null}
-              <Field id="displayName" label={t("auth:displayName")}>
+            <form className="login-form register-form" onSubmit={onSubmit} noValidate>
+              {error ? (
+                <div className="banner banner-error" role="alert">
+                  {error}
+                  {error === t("auth:errors.emailTakenSignIn") ? (
+                    <>
+                      {" "}
+                      <TextLink to="/login">{t("auth:signIn")}</TextLink>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+              <Field id="displayName" label={t("auth:fullName")}>
                 <input
                   id="displayName"
                   name="displayName"
+                  type="text"
                   autoComplete="name"
-                  placeholder={t("auth:displayNamePlaceholder")}
+                  placeholder={t("auth:fullNamePlaceholder")}
                   required
                   value={displayName}
+                  disabled={submitting}
                   onChange={(event) => setDisplayName(event.target.value)}
                 />
               </Field>
@@ -85,44 +106,31 @@ export function RegisterPage() {
                   id="email"
                   name="email"
                   type="email"
-                  autoComplete="username"
+                  autoComplete="email"
                   placeholder={t("auth:emailPlaceholder")}
                   required
                   value={email}
+                  disabled={submitting}
                   onChange={(event) => setEmail(event.target.value)}
                 />
               </Field>
-              <Field id="password" label={t("auth:password")}>
-                <div className="password-input">
-                  <input
-                    id="password"
-                    name="password"
-                    type={passwordVisible ? "text" : "password"}
-                    autoComplete="new-password"
-                    placeholder={t("auth:newPasswordPlaceholder")}
-                    required
-                    minLength={8}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                  <button
-                    className="password-toggle"
-                    type="button"
-                    aria-label={passwordVisible ? t("auth:hidePassword") : t("auth:showPassword")}
-                    aria-pressed={passwordVisible}
-                    onClick={() => setPasswordVisible((visible) => !visible)}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M3 12s3.25-5 9-5 9 5 9 5-3.25 5-9 5-9-5-9-5Z" />
-                      <circle cx="12" cy="12" r="2.25" />
-                    </svg>
-                  </button>
-                </div>
-                <p className="password-requirement">{t("auth:passwordRequirement")}</p>
-              </Field>
-              <button className="login-submit" type="submit" disabled={submitting}>
+              <PasswordFieldGroup
+                password={password}
+                confirmPassword={confirmPassword}
+                onPasswordChange={setPassword}
+                onConfirmPasswordChange={setConfirmPassword}
+                passwordVisible={passwordVisible}
+                confirmVisible={confirmVisible}
+                onTogglePasswordVisible={() => setPasswordVisible((visible) => !visible)}
+                onToggleConfirmVisible={() => setConfirmVisible((visible) => !visible)}
+                disabled={submitting}
+                showConfirm
+              />
+              <button className="login-submit" type="submit" disabled={submitting || !passwordReady}>
                 {submitting ? t("auth:creatingAccount") : t("auth:register")}
               </button>
+              <AuthDivider />
+              <GoogleSignInButton label={t("auth:continueWithGoogle")} disabled={submitting} />
               <div className="register-signin">
                 <span>{t("auth:alreadyRegistered")}</span>
                 <TextLink to="/login">{t("auth:signIn")}</TextLink>

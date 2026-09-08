@@ -14,8 +14,19 @@ public static class AuthEndpoints
         group.MapPost("/register", RegisterAsync);
         group.MapPost("/login", LoginAsync);
         group.MapGet("/me", GetMeAsync).RequireAuthorization();
+        group.MapGet("/providers", GetProvidersAsync);
 
         return endpoints;
+    }
+
+    private static IResult GetProvidersAsync(IConfiguration configuration)
+    {
+        var google = configuration.GetSection(GoogleAuthenticationOptions.SectionName);
+        var clientId = google["ClientId"];
+        var clientSecret = google["ClientSecret"];
+        var googleConfigured = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
+        return Results.Ok(new AuthProvidersResponse(
+            new GoogleAuthProviderResponse(googleConfigured)));
     }
 
     private static async Task<IResult> RegisterAsync(
@@ -104,3 +115,7 @@ public sealed record LoginResponse(
     string Email,
     string DisplayName,
     bool IsPlatformAdministrator);
+
+public sealed record AuthProvidersResponse(GoogleAuthProviderResponse Google);
+
+public sealed record GoogleAuthProviderResponse(bool Available);

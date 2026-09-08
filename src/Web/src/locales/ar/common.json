@@ -9,6 +9,12 @@
   "cancel": "إلغاء",
   "close": "إغلاق",
   "loading": "جارٍ التحميل…",
+  "feedback": {
+    "region": "نتائج الإجراءات",
+    "dismiss": "إغلاق الإشعار",
+    "connectionTitle": "مشكلة في الاتصال",
+    "connectionBody": "تعذر الوصول إلى الخادم. تحقق من الاتصال وحاول مرة أخرى."
+  },
   "signedInAs": "مسجّل الدخول باسم {{name}}",
   "platformAdministrator": "مسؤول المنصة",
   "notFound": {
@@ -36,6 +42,7 @@
     "invalid_project": "أدخل اسم المشروع.",
     "workspace_not_found": "مساحة العمل غير موجودة.",
     "tenant_access_denied": "ليست لديك صلاحية الوصول إلى هذه المنظمة.",
+    "tenant_update_forbidden": "لا يمكنك تغيير هذه المنظمة.",
     "workspace_create_forbidden": "لا يمكنك إنشاء مساحة عمل في هذه المنظمة.",
     "workspace_edit_forbidden": "لا يمكنك تعديل مساحة العمل هذه أو مشاريعها.",
     "workspace_access_manage_forbidden": "لا يمكنك إدارة صلاحيات مساحات العمل لهذه المنظمة.",

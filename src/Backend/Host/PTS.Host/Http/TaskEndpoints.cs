@@ -54,8 +54,19 @@ public static class TaskEndpoints
                 return resolved.Error;
             }
 
+            var openCount = await session.DbContext.WorkTasks
+                .AsNoTracking()
+                .CountAsync(
+                    task =>
+                        task.TenantId == session.TenantId &&
+                        task.ProjectId == projectId &&
+                        (task.Status == WorkTaskStatus.Open
+                         || task.Status == WorkTaskStatus.InProgress
+                         || task.Status == WorkTaskStatus.Waiting),
+                    cancellationToken);
+
             await session.CommitAsync(cancellationToken);
-            return Results.Ok(ToProjectResponse(resolved.Project!));
+            return Results.Ok(ToProjectResponse(resolved.Project!, openCount));
         }
         catch (AuthenticationRequiredException)
         {
@@ -105,7 +116,7 @@ public static class TaskEndpoints
                 .ToListAsync(cancellationToken);
 
             var responses = await TaskCollaboration.ToTaskResponsesAsync(
-                session, taskAuthorization, tasks, markSelectedSeen: false, cancellationToken);
+                session, taskAuthorization, authorization, resolved.Access, tasks, markSelectedSeen: false, cancellationToken);
             await session.CommitAsync(cancellationToken);
             return Results.Ok(responses);
         }
@@ -156,8 +167,7 @@ public static class TaskEndpoints
             }
 
             var response = await TaskCollaboration.ToTaskResponsesAsync(
-                session, taskAuthorization, [task], markSelectedSeen: true, cancellationToken);
-            await session.DbContext.SaveChangesAsync(cancellationToken);
+                session, taskAuthorization, authorization, resolved.Access, [task], markSelectedSeen: false, cancellationToken);
             await session.CommitAsync(cancellationToken);
             return Results.Ok(response[0]);
         }
@@ -261,10 +271,11 @@ public static class TaskEndpoints
             }
 
             TaskCollaboration.RecordActivity(session, task, WorkTaskActivityType.TaskCreated, null, title);
-            TaskCollaboration.NotifyAssignmentChange(session, task, null, assigneeId);
+            var projectName = await TaskCollaboration.ResolveProjectNameAsync(session, projectId, cancellationToken);
+            TaskCollaboration.NotifyAssignmentChange(session, task, null, assigneeId, projectName);
             await session.DbContext.SaveChangesAsync(cancellationToken);
             var created = await TaskCollaboration.ToTaskResponsesAsync(
-                session, taskAuthorization, [task], markSelectedSeen: false, cancellationToken);
+                session, taskAuthorization, authorization, resolved.Access, [task], markSelectedSeen: false, cancellationToken);
             await session.DbContext.SaveChangesAsync(cancellationToken);
             await session.CommitAsync(cancellationToken);
 
@@ -344,7 +355,8 @@ public static class TaskEndpoints
                 return Results.NotFound(new { error = "task_not_found" });
             }
 
-            var subject = taskAuthorization.Describe(session.MembershipId, task, hasWorkspaceView: true);
+            var subject = TaskCollaboration.DescribeSubject(
+                session, taskAuthorization, authorization, resolved.Access, task);
             var description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
             var definitionChanged =
                 !string.Equals(task.Title, title, StringComparison.Ordinal) ||
@@ -404,28 +416,30 @@ public static class TaskEndpoints
                 return Results.BadRequest(new { error = "invalid_tag" });
             }
 
+            var projectName = await TaskCollaboration.ResolveProjectNameAsync(session, task.ProjectId, cancellationToken);
+
             if (!string.Equals(previousTitle, title, StringComparison.Ordinal))
             {
                 TaskCollaboration.RecordActivity(session, task, WorkTaskActivityType.TitleChanged, previousTitle, title);
-                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskUpdated);
+                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskUpdated, projectName);
             }
 
             if (!string.Equals(previousDescription, description, StringComparison.Ordinal))
             {
                 TaskCollaboration.RecordActivity(session, task, WorkTaskActivityType.DescriptionChanged, previousDescription, description);
-                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskUpdated);
+                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskUpdated, projectName);
             }
 
             if (previousPriority != priority)
             {
                 TaskCollaboration.RecordActivity(session, task, WorkTaskActivityType.PriorityChanged, previousPriority.ToString(), priority.ToString());
-                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskPriorityChanged);
+                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskPriorityChanged, projectName);
             }
 
             if (previousDue != request.DueDate)
             {
                 TaskCollaboration.RecordActivity(session, task, WorkTaskActivityType.DeadlineChanged, FormatDate(previousDue), FormatDate(request.DueDate));
-                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskDeadlineChanged);
+                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskDeadlineChanged, projectName);
             }
 
             if (previousStatus != status)
@@ -439,7 +453,7 @@ public static class TaskEndpoints
                     : status == WorkTaskStatus.Open && previousStatus == WorkTaskStatus.Closed
                         ? WorkNotificationType.TaskReopened
                         : WorkNotificationType.TaskStatusChanged;
-                TaskCollaboration.NotifyParticipants(session, task, notifyType);
+                TaskCollaboration.NotifyParticipants(session, task, notifyType, projectName);
             }
 
             if (previousAssignee != assigneeId)
@@ -450,18 +464,18 @@ public static class TaskEndpoints
                     WorkTaskActivityType.AssigneeChanged,
                     previousAssignee?.ToString(),
                     assigneeId?.ToString());
-                TaskCollaboration.NotifyAssignmentChange(session, task, previousAssignee, assigneeId);
+                TaskCollaboration.NotifyAssignmentChange(session, task, previousAssignee, assigneeId, projectName);
             }
 
             if (tagsRequested &&
                 (previousTagIds.Count != syncedTags.Count || previousTagIds.Any(id => !syncedTags.Contains(id))))
             {
-                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskTagChanged);
+                TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskTagChanged, projectName);
             }
 
             await session.DbContext.SaveChangesAsync(cancellationToken);
             var updated = await TaskCollaboration.ToTaskResponsesAsync(
-                session, taskAuthorization, [task], markSelectedSeen: false, cancellationToken);
+                session, taskAuthorization, authorization, resolved.Access, [task], markSelectedSeen: false, cancellationToken);
             await session.DbContext.SaveChangesAsync(cancellationToken);
             await session.CommitAsync(cancellationToken);
             return Results.Ok(updated[0]);
@@ -512,9 +526,16 @@ public static class TaskEndpoints
                 return Results.NotFound(new { error = "task_not_found" });
             }
 
-            var subject = taskAuthorization.Describe(session.MembershipId, task, hasWorkspaceView: true);
-            if (!taskAuthorization.CanDelete(subject))
+            var subject = TaskCollaboration.DescribeSubject(
+                session, taskAuthorization, authorization, resolved.Access, task);
+            var hasEngagement = await TaskCollaboration.HasNonCreatorEngagementAsync(session, task, cancellationToken);
+            if (!taskAuthorization.CanDelete(subject, hasEngagement))
             {
+                if (subject.IsCreator && subject.HasWorkspaceEdit && hasEngagement)
+                {
+                    return Results.Conflict(new { error = "task_already_seen_cannot_delete" });
+                }
+
                 return Results.Json(new { error = "task_delete_forbidden" }, statusCode: StatusCodes.Status403Forbidden);
             }
 
@@ -641,7 +662,8 @@ public static class TaskEndpoints
                 return Results.NotFound(new { error = "task_not_found" });
             }
 
-            var subject = taskAuthorization.Describe(session.MembershipId, task, hasWorkspaceView: true);
+            var subject = TaskCollaboration.DescribeSubject(
+                session, taskAuthorization, authorization, resolved.Access, task);
             if (!taskAuthorization.CanComment(subject, task.Status))
             {
                 return Results.Json(new { error = "task_comment_forbidden" }, statusCode: StatusCodes.Status403Forbidden);
@@ -658,7 +680,8 @@ public static class TaskEndpoints
             };
             session.DbContext.WorkTaskComments.Add(comment);
             TaskCollaboration.RecordActivity(session, task, WorkTaskActivityType.CommentAdded, null, body);
-            TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskCommentAdded);
+            var projectName = await TaskCollaboration.ResolveProjectNameAsync(session, task.ProjectId, cancellationToken);
+            TaskCollaboration.NotifyParticipants(session, task, WorkNotificationType.TaskCommentAdded, projectName);
             await session.DbContext.SaveChangesAsync(cancellationToken);
             await session.CommitAsync(cancellationToken);
             return Results.Created(
@@ -726,7 +749,8 @@ public static class TaskEndpoints
                 return Results.NotFound(new { error = "comment_not_found" });
             }
 
-            var subject = taskAuthorization.Describe(session.MembershipId, task, hasWorkspaceView: true);
+            var subject = TaskCollaboration.DescribeSubject(
+                session, taskAuthorization, authorization, resolved.Access, task);
             if (!taskAuthorization.CanEditOwnComment(subject, comment.AuthorMembershipId))
             {
                 return Results.Json(new { error = "task_comment_forbidden" }, statusCode: StatusCodes.Status403Forbidden);
@@ -795,7 +819,8 @@ public static class TaskEndpoints
                 return Results.NotFound(new { error = "comment_not_found" });
             }
 
-            var subject = taskAuthorization.Describe(session.MembershipId, task, hasWorkspaceView: true);
+            var subject = TaskCollaboration.DescribeSubject(
+                session, taskAuthorization, authorization, resolved.Access, task);
             if (!taskAuthorization.CanEditOwnComment(subject, comment.AuthorMembershipId))
             {
                 return Results.Json(new { error = "task_comment_forbidden" }, statusCode: StatusCodes.Status403Forbidden);
@@ -917,7 +942,7 @@ public static class TaskEndpoints
                 return Results.NotFound(new { error = "task_not_found" });
             }
 
-            await TaskCollaboration.MarkSeenAsync(session, task.Id, cancellationToken);
+            await TaskCollaboration.MarkSeenAsync(session, task, cancellationToken);
             await session.DbContext.SaveChangesAsync(cancellationToken);
             await session.CommitAsync(cancellationToken);
             return Results.NoContent();
@@ -1050,8 +1075,16 @@ public static class TaskEndpoints
             && Enum.IsDefined(priority);
     }
 
-    private static ProjectResponse ToProjectResponse(Project project)
-        => new(project.Id, project.TenantId, project.WorkspaceId, project.Name);
+    private static ProjectResponse ToProjectResponse(Project project, int openTaskCount = 0)
+        => new(
+            project.Id,
+            project.TenantId,
+            project.WorkspaceId,
+            project.Name,
+            project.Description,
+            project.AccentToken,
+            openTaskCount,
+            project.CreatedAtUtc);
 
     private sealed record ResolvedProject(
         Project? Project,
@@ -1110,7 +1143,8 @@ public sealed record TaskCapabilitiesResponse(
     bool CanReassign,
     bool CanComment,
     bool CanDelete,
-    IReadOnlyList<string> AllowedStatuses);
+    IReadOnlyList<string> AllowedStatuses,
+    string? DeleteBlockedReason = null);
 
 public sealed record CreateWorkTaskCommentRequest(string Body);
 

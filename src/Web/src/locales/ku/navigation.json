@@ -5,7 +5,11 @@
   "workspace": "شوێنی کار",
   "soon": "بەم زووانە",
   "tenants": "ڕێکخراوەکان",
+  "members": "ئەندامان",
   "workspaces": "شوێنەکانی کار",
   "projects": "پرۆژەکان",
-  "tasks": "ئەرکەکان"
+  "tasks": "ئەرکەکان",
+  "selectOrganizationFirst": "سەرەتا ڕێکخراوێک هەڵبژێرە",
+  "selectWorkspaceFirst": "سەرەتا شوێنی کارێک هەڵبژێرە",
+  "selectProjectFirst": "سەرەتا پڕۆژەیەک هەڵبژێرە"
 }

@@ -1,4 +1,13 @@
-import { type Dispatch, type FormEvent, type SetStateAction, useEffect, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -15,6 +24,7 @@ import {
   listTaskComments,
   listTasks,
   listWorkspaceTags,
+  markTaskSeen,
   updateTask,
   updateTaskComment,
 } from "../api/client";
@@ -33,13 +43,39 @@ import type {
   Workspace,
 } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
+import { ContextMenu } from "../components/ContextMenu";
 import { Dialog } from "../components/Dialog";
+import { EmptyState } from "../components/EmptyState";
+import { InfoCallout } from "../components/InfoCallout";
+import { PageHeader } from "../components/PageHeader";
+import { TaskSectionDisclosure } from "../components/TaskSectionDisclosure";
 import { Field, StatusBanner } from "../components/Ui";
+import { useFeedback } from "../feedback/FeedbackProvider";
+import type { MemberMenuItem } from "../members/memberActions";
 import { TaskDeadlineField } from "../tasks/TaskDeadlineField";
 import { TaskPriorityBadge, TaskPriorityField } from "../tasks/TaskPriorityField";
 import { formatDateTimeUtc, formatTaskDate, isTaskOverdue, normalizePriority } from "../tasks/presentation";
+import { isTaskFullyReadOnly, resolveTaskCapabilities } from "../tasks/resolveTaskCapabilities";
+import { formatActivityChange } from "../tasks/activityPresentation";
+import {
+  applyTaskFilters,
+  applyTaskQuickScope,
+  countActiveTasks,
+  countMyTasks,
+  countOverdueTasks,
+  EMPTY_TASK_FILTERS,
+  filterTasksBySearch,
+  hasActiveTaskFilters,
+  resolveCurrentMembershipId,
+  sortTasks,
+  taskDraftChanged,
+  type TaskFilters,
+  type TaskQuickScope,
+  type TaskSort,
+} from "../tasks/taskResources";
 
 const STATUSES: TaskStatus[] = ["Open", "InProgress", "Waiting", "Resolved", "Closed"];
+const PRIORITIES: TaskPriority[] = ["Urgent", "High", "Normal", "Low"];
 
 const emptyDraft = {
   title: "",
@@ -53,19 +89,7 @@ const emptyDraft = {
 };
 
 function resolveCapabilities(task: WorkTask, accessLevel: Workspace["accessLevel"] | undefined): TaskCapabilities {
-  if (task.capabilities) {
-    return task.capabilities;
-  }
-
-  const canEdit = accessLevel === "Edit";
-  return {
-    canEditDefinition: canEdit,
-    canManageTags: canEdit,
-    canReassign: canEdit,
-    canComment: true,
-    canDelete: canEdit,
-    allowedStatuses: canEdit ? [...STATUSES] : [task.status],
-  };
+  return resolveTaskCapabilities(task, accessLevel);
 }
 
 function projectPath(tenantId: string, workspaceId: string, projectId: string) {
@@ -77,7 +101,8 @@ export function ProjectTasksPage() {
   const { tenantId, workspaceId, projectId, "*": splat } = useParams();
   const routeTaskId = splat?.startsWith("tasks/") ? splat.slice("tasks/".length) : undefined;
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const { show } = useFeedback();
   const requestId = useRef(0);
   const activityRef = useRef<HTMLElement | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -94,15 +119,24 @@ export function ProjectTasksPage() {
   const [activity, setActivity] = useState<WorkTaskActivity[]>([]);
   const [commentBody, setCommentBody] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [pendingAssigneeId, setPendingAssigneeId] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [quickScope, setQuickScope] = useState<TaskQuickScope>("all");
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_TASK_FILTERS);
+  const [filterDraft, setFilterDraft] = useState<TaskFilters>(EMPTY_TASK_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sort, setSort] = useState<TaskSort>("updatedDesc");
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [forbidden, setForbidden] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!token || !tenantId || !workspaceId || !projectId) {
@@ -110,6 +144,8 @@ export function ProjectTasksPage() {
     }
     const current = requestId.current + 1;
     requestId.current = current;
+    // Reset task-page state when the project route changes, then fetch.
+    // oxlint-disable-next-line react/set-state-in-effect
     setWorkspace(null);
     setProject(null);
     setAssignable([]);
@@ -123,11 +159,17 @@ export function ProjectTasksPage() {
     setActivity([]);
     setCommentBody("");
     setEditingCommentId(null);
-    setConfirmDelete(false);
+    setDeleteOpen(false);
     setPendingAssigneeId(null);
+    setSearch("");
+    setQuickScope("all");
+    setFilters(EMPTY_TASK_FILTERS);
+    setFilterDraft(EMPTY_TASK_FILTERS);
+    setSort("updatedDesc");
     setForbidden(false);
     setNotFound(false);
     setError(null);
+    setLoadError(false);
     setLoading(true);
     const controller = new AbortController();
 
@@ -170,43 +212,47 @@ export function ProjectTasksPage() {
           return;
         }
         setError(t(translationKeyForApiError(cause), { ns: "common" }));
+        setLoadError(true);
         setLoading(false);
       }
     })();
 
     return () => controller.abort();
-  }, [token, tenantId, workspaceId, projectId, t]);
+  }, [token, tenantId, workspaceId, projectId, t, reloadToken]);
+
+  function retryLoad() {
+    setLoadError(false);
+    setError(null);
+    setReloadToken((current) => current + 1);
+  }
 
   const canCreate = workspace?.accessLevel === "Edit";
+  const currentMembershipId = useMemo(
+    () => resolveCurrentMembershipId(assignable, user?.email),
+    [assignable, user?.email],
+  );
+
+  // Client-side search, quick scope, filters, and sort on the loaded task list.
+  const filteredTasks = useMemo(() => {
+    let result = tasks;
+    result = filterTasksBySearch(result, search);
+    result = applyTaskQuickScope(result, quickScope, currentMembershipId);
+    result = applyTaskFilters(result, filters, currentMembershipId);
+    return sortTasks(result, sort);
+  }, [tasks, search, quickScope, filters, sort, currentMembershipId]);
+
   const selected = tasks.find((task) => task.taskId === selectedId) ?? null;
   const capabilities = selected ? resolveCapabilities(selected, workspace?.accessLevel) : null;
+  const taskReadOnly = capabilities ? isTaskFullyReadOnly(capabilities) : false;
+  const draftChanged = selected ? taskDraftChanged(draft, selected) : false;
   const canSave =
     Boolean(capabilities?.canEditDefinition || capabilities?.canManageTags || capabilities?.canReassign) ||
     Boolean(capabilities && capabilities.allowedStatuses.some((status) => status !== selected?.status));
+  const canReopen =
+    selected?.status === "Closed" && Boolean(capabilities?.allowedStatuses.includes("Open"));
+  const showTaskToolbar = !loading && tasks.length > 0;
 
-  useEffect(() => {
-    if (!routeTaskId || loading) {
-      if (!routeTaskId) {
-        setSelectedId(null);
-      }
-      return;
-    }
-    const task = tasks.find((item) => item.taskId === routeTaskId);
-    if (task && selectedId !== routeTaskId) {
-      void loadTask(task);
-    }
-  }, [routeTaskId, tasks, loading, selectedId]);
-
-  function statusLabel(status: TaskStatus) {
-    return t(`tasks:status.${status === "InProgress" ? "inProgress" : status.toLowerCase()}`);
-  }
-
-  function statusOptions(task: WorkTask, caps: TaskCapabilities) {
-    const values = new Set<TaskStatus>([task.status, ...caps.allowedStatuses]);
-    return STATUSES.filter((status) => values.has(status));
-  }
-
-  function applyDraft(task: WorkTask) {
+  const applyDraft = useCallback((task: WorkTask) => {
     setDraft({
       title: task.title,
       description: task.description ?? "",
@@ -217,6 +263,68 @@ export function ProjectTasksPage() {
       tagIds: task.tags?.map((tag) => tag.tagId) ?? [],
       newTag: "",
     });
+  }, []);
+
+  const loadTask = useCallback(async (task: WorkTask) => {
+    setSelectedId(task.taskId);
+    applyDraft(task);
+    setDeleteOpen(false);
+    setPendingAssigneeId(null);
+    setCommentBody("");
+    setEditingCommentId(null);
+    setCommentsOpen(true);
+    setActivityOpen(task.unseenActivityCount > 0);
+    if (!token || !tenantId || !workspaceId || !projectId) {
+      return;
+    }
+    try {
+      const [fresh, nextComments, nextActivity] = await Promise.all([
+        getTask(token, tenantId, workspaceId, projectId, task.taskId),
+        listTaskComments(token, tenantId, workspaceId, projectId, task.taskId),
+        listTaskActivity(token, tenantId, workspaceId, projectId, task.taskId),
+      ]);
+      void markTaskSeen(token, tenantId, workspaceId, projectId, fresh.taskId).catch(() => undefined);
+      setTasks((current) => current.map((item) => (item.taskId === fresh.taskId ? fresh : item)));
+      applyDraft(fresh);
+      setComments(nextComments);
+      setActivity(nextActivity);
+      setActivityOpen(fresh.unseenActivityCount > 0);
+    } catch (cause) {
+      if (isApiError(cause) && cause.status === 404) {
+        setComments([]);
+        setActivity([]);
+        return;
+      }
+      setError(t(translationKeyForApiError(cause), { ns: "common" }));
+    }
+  }, [applyDraft, projectId, t, tenantId, token, workspaceId]);
+
+  useEffect(() => {
+    if (!routeTaskId || loading) {
+      if (!routeTaskId) {
+        // Keep list selection aligned with the URL after the detail route closes.
+        // oxlint-disable-next-line react/set-state-in-effect
+        setSelectedId(null);
+      }
+      return;
+    }
+    const task = tasks.find((item) => item.taskId === routeTaskId);
+    if (task && selectedId !== routeTaskId) {
+      void loadTask(task);
+    }
+  }, [loadTask, loading, routeTaskId, selectedId, tasks]);
+
+  function statusLabel(status: TaskStatus) {
+    return t(`tasks:status.${status === "InProgress" ? "inProgress" : status.toLowerCase()}`);
+  }
+
+  function priorityLabel(priority: TaskPriority) {
+    return t(`tasks:priority.${normalizePriority(priority).toLowerCase()}`, { defaultValue: priority });
+  }
+
+  function statusOptions(task: WorkTask, caps: TaskCapabilities) {
+    const values = new Set<TaskStatus>([task.status, ...caps.allowedStatuses]);
+    return STATUSES.filter((status) => values.has(status));
   }
 
   function listPath() {
@@ -232,37 +340,9 @@ export function ProjectTasksPage() {
     setCreateOpen(false);
   }
 
-  async function loadTask(task: WorkTask) {
-    setSelectedId(task.taskId);
-    applyDraft(task);
-    setConfirmDelete(false);
-    setPendingAssigneeId(null);
-    setCommentBody("");
-    setEditingCommentId(null);
-    setCommentsOpen(true);
-    setActivityOpen(task.unseenActivityCount > 0);
-    if (!token || !tenantId || !workspaceId || !projectId) {
-      return;
-    }
-    try {
-      const [fresh, nextComments, nextActivity] = await Promise.all([
-        getTask(token, tenantId, workspaceId, projectId, task.taskId),
-        listTaskComments(token, tenantId, workspaceId, projectId, task.taskId),
-        listTaskActivity(token, tenantId, workspaceId, projectId, task.taskId),
-      ]);
-      setTasks((current) => current.map((item) => (item.taskId === fresh.taskId ? fresh : item)));
-      applyDraft(fresh);
-      setComments(nextComments);
-      setActivity(nextActivity);
-      setActivityOpen(fresh.unseenActivityCount > 0);
-    } catch (cause) {
-      if (isApiError(cause) && cause.status === 404) {
-        setComments([]);
-        setActivity([]);
-        return;
-      }
-      setError(t(translationKeyForApiError(cause), { ns: "common" }));
-    }
+  function openCreateDialog() {
+    setError(null);
+    setCreateOpen(true);
   }
 
   function openTask(task: WorkTask) {
@@ -275,16 +355,32 @@ export function ProjectTasksPage() {
   function closeDetail() {
     setSelectedId(null);
     setPendingAssigneeId(null);
-    setConfirmDelete(false);
+    setDeleteOpen(false);
     navigate(listPath());
+  }
+
+  function clearDiscovery() {
+    setSearch("");
+    setQuickScope("all");
+    setFilters(EMPTY_TASK_FILTERS);
+  }
+
+  function openFiltersDialog() {
+    setFilterDraft(filters);
+    setFiltersOpen(true);
+  }
+
+  function applyFilters() {
+    setFilters(filterDraft);
+    setFiltersOpen(false);
   }
 
   async function onCreate(event: FormEvent) {
     event.preventDefault();
-    if (!token || !tenantId || !workspaceId || !projectId || busy) {
+    if (!token || !tenantId || !workspaceId || !projectId || creating) {
       return;
     }
-    setBusy(true);
+    setCreating(true);
     setError(null);
     try {
       const created = await createTask(token, tenantId, workspaceId, projectId, {
@@ -302,16 +398,25 @@ export function ProjectTasksPage() {
         setAvailableTags((current) => mergeTags(current, created.tags));
       }
       resetCreate();
+      show({
+        tone: "success",
+        title: t("tasks:createdTitle"),
+        body: t("tasks:createdBody", { title: created.title }),
+      });
     } catch (cause) {
+      show({
+        tone: "error",
+        title: t("tasks:createFailed"),
+      });
       setError(t(translationKeyForApiError(cause), { ns: "common" }));
     } finally {
-      setBusy(false);
+      setCreating(false);
     }
   }
 
   async function persistTask(nextDraft: typeof emptyDraft) {
     if (!token || !tenantId || !workspaceId || !projectId || !selected || !capabilities) {
-      return;
+      return null;
     }
     setBusy(true);
     setError(null);
@@ -333,8 +438,17 @@ export function ProjectTasksPage() {
       }
       const nextActivity = await listTaskActivity(token, tenantId, workspaceId, projectId, updated.taskId);
       setActivity(nextActivity);
+      show({
+        tone: "success",
+        title: t("tasks:savedTitle"),
+        body: t("tasks:savedBody"),
+      });
       return updated;
     } catch (cause) {
+      show({
+        tone: "error",
+        title: t("tasks:saveFailed"),
+      });
       setError(t(translationKeyForApiError(cause), { ns: "common" }));
       if (isApiError(cause) && (cause.status === 403 || cause.status === 409)) {
         await loadTask(selected);
@@ -347,10 +461,28 @@ export function ProjectTasksPage() {
 
   async function onSave(event: FormEvent) {
     event.preventDefault();
-    if (busy) {
+    if (busy || !draftChanged) {
       return;
     }
     await persistTask(draft);
+  }
+
+  async function onReopen() {
+    if (!selected || busy) {
+      return;
+    }
+    const nextDraft = { ...draft, status: "Open" as TaskStatus };
+    setDraft(nextDraft);
+    await persistTask(nextDraft);
+  }
+
+  async function onCloseTaskFromCallout() {
+    if (!selected || busy) {
+      return;
+    }
+    const nextDraft = { ...draft, status: "Closed" as TaskStatus };
+    setDraft(nextDraft);
+    await persistTask(nextDraft);
   }
 
   async function onConfirmHandoff() {
@@ -372,8 +504,13 @@ export function ProjectTasksPage() {
     try {
       await deleteTask(token, tenantId, workspaceId, projectId, selected.taskId);
       setTasks((current) => current.filter((task) => task.taskId !== selected.taskId));
+      setDeleteOpen(false);
       closeDetail();
     } catch (cause) {
+      show({
+        tone: "error",
+        title: t("tasks:deleteFailed"),
+      });
       setError(t(translationKeyForApiError(cause), { ns: "common" }));
     } finally {
       setBusy(false);
@@ -486,6 +623,71 @@ export function ProjectTasksPage() {
     }
   }
 
+  function toggleFilterStatus(status: TaskStatus) {
+    setFilterDraft((current) => ({
+      ...current,
+      statuses: current.statuses.includes(status)
+        ? current.statuses.filter((item) => item !== status)
+        : [...current.statuses, status],
+    }));
+  }
+
+  function toggleFilterPriority(priority: TaskPriority) {
+    setFilterDraft((current) => ({
+      ...current,
+      priorities: current.priorities.includes(priority)
+        ? current.priorities.filter((item) => item !== priority)
+        : [...current.priorities, priority],
+    }));
+  }
+
+  function deadlineFilterLabel(deadline: TaskFilters["deadline"]) {
+    switch (deadline) {
+      case "overdue":
+        return t("tasks:filterDeadlineOverdue");
+      case "today":
+        return t("tasks:filterDeadlineToday");
+      case "week":
+        return t("tasks:filterDeadlineWeek");
+      case "none":
+        return t("tasks:filterDeadlineNone");
+      default:
+        return t("tasks:filterDeadlineAny");
+    }
+  }
+
+  function toggleFilterTag(tagId: string) {
+    setFilterDraft((current) => ({
+      ...current,
+      tagIds: current.tagIds.includes(tagId)
+        ? current.tagIds.filter((item) => item !== tagId)
+        : [...current.tagIds, tagId],
+    }));
+  }
+
+  const newTaskAction = canCreate ? (
+    <button className="primary-action toolbar-primary-action" type="button" onClick={openCreateDialog}>
+      {t("tasks:newTask")}
+    </button>
+  ) : null;
+
+  const taskActionItems: MemberMenuItem[] =
+    capabilities?.canDelete && selected
+      ? [
+          {
+            id: "delete-task",
+            label: t("tasks:delete"),
+            destructive: true,
+            onClick: () => setDeleteOpen(true),
+          },
+        ]
+      : [];
+
+  const pageDescription =
+    loading || !project
+      ? t("tasks:pageDescription")
+      : `${project.description?.trim() || t("tasks:pageDescription")} · ${t("tasks:resourceSummary", { count: tasks.length })}`;
+
   if (forbidden) {
     return <StatusBanner tone="error">{t("common:errors.forbidden")}</StatusBanner>;
   }
@@ -495,102 +697,212 @@ export function ProjectTasksPage() {
   }
 
   return (
-    <section className="app-page task-list-page">
-      <header className="page-heading">
-        <div>
-          <p className="page-eyebrow">{t("tasks:eyebrow")}</p>
-          <h1>{project?.name ?? t("tasks:title")}</h1>
-          <p>{t("tasks:description")}</p>
-        </div>
-        <div className="page-stat">
-          <strong>{tasks.length}</strong>
-          <span>{t("tasks:taskCount")}</span>
-        </div>
-      </header>
-      {error && !createOpen && !selected ? <StatusBanner tone="error">{error}</StatusBanner> : null}
+    <section className="app-page task-list-page project-tasks-page">
+      <PageHeader eyebrow={t("tasks:eyebrow")} title={project?.name ?? t("tasks:title")} description={pageDescription} />
+
+      {error && !loadError && !createOpen && !selected ? <StatusBanner tone="error">{error}</StatusBanner> : null}
       {loading ? <StatusBanner tone="info">{t("common:loading")}</StatusBanner> : null}
       {workspace?.accessLevel === "View" ? (
         <StatusBanner tone="info">{t("tasks:viewOnly")}</StatusBanner>
       ) : null}
 
-      {canCreate && !createOpen ? (
-        <div className="task-page-toolbar">
-          <button className="primary-action" type="button" onClick={() => setCreateOpen(true)}>
-            {t("tasks:create")}
-          </button>
-        </div>
+      {showTaskToolbar ? (
+        <>
+          <div className="task-quick-scopes" role="group" aria-label={t("tasks:resourceToolbar")}>
+            {(
+              [
+                ["all", t("tasks:quickAll"), tasks.length],
+                ["mine", t("tasks:quickMine"), countMyTasks(tasks, currentMembershipId)],
+                ["active", t("tasks:quickActive"), countActiveTasks(tasks)],
+                ["overdue", t("tasks:quickOverdue"), countOverdueTasks(tasks)],
+              ] as const
+            ).map(([scope, label, count]) => (
+              <button
+                key={scope}
+                type="button"
+                className={quickScope === scope ? "task-quick-scope task-quick-scope-active" : "task-quick-scope"}
+                aria-pressed={quickScope === scope}
+                onClick={() => setQuickScope(scope)}
+              >
+                {label}
+                <span className="task-quick-scope-count">{count}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="project-tasks-toolbar" role="toolbar" aria-label={t("tasks:resourceToolbar")}>
+            <label className="resource-search">
+              <span className="sr-only">{t("tasks:searchLabel")}</span>
+              <input
+                type="search"
+                value={search}
+                placeholder={t("tasks:searchPlaceholder")}
+                aria-label={t("tasks:searchLabel")}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+            <div className="project-tasks-toolbar-controls">
+              <button
+                type="button"
+                className={hasActiveTaskFilters(filters) ? "secondary-action filter-action-active" : "secondary-action"}
+                onClick={openFiltersDialog}
+              >
+                {t("tasks:filterLabel")}
+              </button>
+              <label className="resource-sort">
+                <span className="sr-only">{t("tasks:sortLabel")}</span>
+                <select
+                  aria-label={t("tasks:sortLabel")}
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as TaskSort)}
+                >
+                  <option value="updatedDesc">{t("tasks:sortUpdatedDesc")}</option>
+                  <option value="createdDesc">{t("tasks:sortCreatedDesc")}</option>
+                  <option value="createdAsc">{t("tasks:sortCreatedAsc")}</option>
+                  <option value="dueAsc">{t("tasks:sortDueAsc")}</option>
+                  <option value="dueDesc">{t("tasks:sortDueDesc")}</option>
+                  <option value="priorityDesc">{t("tasks:sortPriorityDesc")}</option>
+                  <option value="priorityAsc">{t("tasks:sortPriorityAsc")}</option>
+                  <option value="titleAsc">{t("tasks:sortTitleAsc")}</option>
+                  <option value="titleDesc">{t("tasks:sortTitleDesc")}</option>
+                </select>
+              </label>
+              {newTaskAction}
+            </div>
+          </div>
+
+          {hasActiveTaskFilters(filters) ? (
+            <div className="task-filter-chips">
+              <span className="task-filter-chips-label">{t("tasks:filterLabel")}</span>
+              {filters.statuses.map((status) => (
+                <span key={status} className="task-filter-chip">
+                  {statusLabel(status)}
+                </span>
+              ))}
+              {filters.priorities.map((priority) => (
+                <span key={priority} className="task-filter-chip">
+                  {priorityLabel(priority)}
+                </span>
+              ))}
+              {filters.assignee !== "any" ? (
+                <span className="task-filter-chip">
+                  {filters.assignee === "me"
+                    ? t("tasks:filterAssigneeMe")
+                    : filters.assignee === "unassigned"
+                      ? t("tasks:filterAssigneeUnassigned")
+                      : assignable.find((member) => member.membershipId === filters.assignee)?.displayName ??
+                        t("tasks:assignee")}
+                </span>
+              ) : null}
+              {filters.deadline !== "any" ? (
+                <span className="task-filter-chip">{deadlineFilterLabel(filters.deadline)}</span>
+              ) : null}
+              {filters.tagIds.map((tagId) => {
+                const tag = availableTags.find((item) => item.tagId === tagId);
+                return tag ? (
+                  <span key={tagId} className="task-filter-chip">
+                    {tag.name}
+                  </span>
+                ) : null;
+              })}
+              <button type="button" className="secondary-action task-filter-clear" onClick={() => setFilters(EMPTY_TASK_FILTERS)}>
+                {t("tasks:clearFilters")}
+              </button>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
-      <div className="surface-card entity-section">
-        <div className="card-heading card-heading-between">
-          <div>
-            <h2>{t("tasks:list")}</h2>
-            <p>{t("tasks:listDescription")}</p>
-          </div>
-          <span className="count-badge">{tasks.length}</span>
-        </div>
-        {loading ? (
-          <p>{t("common:loading")}</p>
-        ) : tasks.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-state-icon" aria-hidden="true">✓</span>
-            <strong>{t("tasks:emptyTitle")}</strong>
-            <p>{t("tasks:empty")}</p>
-          </div>
-        ) : (
-          <ul className="task-list">
-            {tasks.map((task) => (
-              <li key={task.taskId}>
-                <button
-                  type="button"
-                  id={`task-row-${task.taskId}`}
-                  className={`task-row ${selectedId === task.taskId ? "task-row-active" : ""}`}
-                  onClick={() => openTask(task)}
-                >
-                  <span className="entity-copy">
-                    <strong>{task.title}</strong>
-                    <span className="task-row-meta">
-                      <TaskPriorityBadge priority={task.priority} />
-                      <span>{statusLabel(task.status)}</span>
-                      <span>{assigneeLabel(task)}</span>
-                      {task.tags?.slice(0, 3).map((tag) => (
-                        <span key={tag.tagId} className="task-tag-chip task-tag-chip-static">
-                          {tag.name}
-                        </span>
-                      ))}
-                      {task.dueDate ? (
-                        <time dateTime={task.dueDate}>
-                          {t("tasks:due", { date: formatTaskDate(task.dueDate) })}
-                        </time>
-                      ) : null}
-                      {isTaskOverdue(task.dueDate, task.status) ? (
-                        <span className="task-overdue">{t("tasks:deadline.overdue")}</span>
-                      ) : null}
-                      {task.unseenActivityCount > 0 ? (
-                        <span className="task-unseen">
-                          {t("tasks:newChanges", { count: task.unseenActivityCount })}
-                        </span>
-                      ) : null}
-                    </span>
+      {loading ? (
+        <p className="quiet-state">{t("common:loading")}</p>
+      ) : loadError ? (
+        <EmptyState
+          compact
+          title={t("tasks:loadFailedTitle")}
+          body={t("tasks:loadFailedBody")}
+          action={
+            <button type="button" className="secondary-action" onClick={retryLoad}>
+              {t("tasks:retryLoad")}
+            </button>
+          }
+        />
+      ) : tasks.length === 0 ? (
+        <EmptyState
+          title={t("tasks:emptyTitle")}
+          body={canCreate ? t("tasks:emptyBodyCreate") : t("tasks:emptyBodyViewOnly")}
+          action={
+            canCreate ? (
+              <button type="button" className="primary-action" onClick={openCreateDialog}>
+                {t("tasks:newTask")}
+              </button>
+            ) : undefined
+          }
+        />
+      ) : filteredTasks.length === 0 ? (
+        <EmptyState
+          compact
+          title={t("tasks:searchEmptyTitle")}
+          body={t("tasks:searchEmptyBody")}
+          action={
+            <button type="button" className="secondary-action" onClick={clearDiscovery}>
+              {hasActiveTaskFilters(filters) ? t("tasks:clearFilters") : t("tasks:clearSearch")}
+            </button>
+          }
+        />
+      ) : (
+        <ul className="task-list">
+          {filteredTasks.map((task) => (
+            <li key={task.taskId}>
+              <button
+                type="button"
+                id={`task-row-${task.taskId}`}
+                className={`task-row ${selectedId === task.taskId ? "task-row-active" : ""}`}
+                onClick={() => openTask(task)}
+              >
+                <span className="entity-copy">
+                  <strong>{task.title}</strong>
+                  <span className="task-row-meta">
+                    <TaskPriorityBadge priority={task.priority} />
+                    <span>{statusLabel(task.status)}</span>
+                    <span>{assigneeLabel(task)}</span>
+                    {task.tags?.slice(0, 3).map((tag) => (
+                      <span key={tag.tagId} className="task-tag-chip task-tag-chip-static">
+                        {tag.name}
+                      </span>
+                    ))}
+                    {task.dueDate ? (
+                      <time dateTime={task.dueDate}>
+                        {isTaskOverdue(task.dueDate, task.status)
+                          ? t("tasks:dueOverdue", { date: formatTaskDate(task.dueDate) })
+                          : t("tasks:due", { date: formatTaskDate(task.dueDate) })}
+                      </time>
+                    ) : null}
+                    {isTaskOverdue(task.dueDate, task.status) ? (
+                      <span className="task-overdue">{t("tasks:deadline.overdue")}</span>
+                    ) : null}
+                    {task.unseenActivityCount > 0 ? (
+                      <span className="task-unseen">
+                        {t("tasks:newChanges", { count: task.unseenActivityCount })}
+                      </span>
+                    ) : null}
                   </span>
-                  <span className="entity-arrow" aria-hidden="true">→</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <Dialog
         open={createOpen}
+        size="compact"
         titleId="create-task-title"
-        title={t("tasks:create")}
+        title={t("tasks:newTask")}
         closeLabel={t("common:close")}
         onClose={resetCreate}
       >
         {error ? <StatusBanner tone="error">{error}</StatusBanner> : null}
         <form className="form-card task-create-card" onSubmit={onCreate}>
-          <p>{t("tasks:createDescription")}</p>
           <div className="form-fields">
             <Field id="task-title" label={t("tasks:fields.title")}>
               <input
@@ -659,143 +971,315 @@ export function ProjectTasksPage() {
             />
           </div>
           <div className="task-actions task-create-actions">
-            <button className="secondary-action" type="button" disabled={busy} onClick={resetCreate}>
+            <button className="secondary-action" type="button" disabled={creating} onClick={resetCreate}>
               {t("common:cancel")}
             </button>
-            <button className="primary-action" type="submit" disabled={busy}>
-              {busy ? t("common:loading") : t("tasks:create")}
+            <button className="primary-action" type="submit" disabled={creating}>
+              {creating ? t("tasks:creating") : t("tasks:newTask")}
             </button>
           </div>
         </form>
       </Dialog>
 
       <Dialog
+        open={filtersOpen}
+        size="compact"
+        titleId="task-filter-title"
+        title={t("tasks:filterDialogTitle")}
+        closeLabel={t("common:close")}
+        onClose={() => setFiltersOpen(false)}
+      >
+        <div className="form-fields task-filter-form">
+          <fieldset className="task-filter-group">
+            <legend>{t("tasks:filterStatus")}</legend>
+            <div className="task-filter-options">
+              {STATUSES.map((status) => (
+                <label key={status} className="task-filter-option">
+                  <input
+                    type="checkbox"
+                    checked={filterDraft.statuses.includes(status)}
+                    onChange={() => toggleFilterStatus(status)}
+                  />
+                  {statusLabel(status)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset className="task-filter-group">
+            <legend>{t("tasks:filterPriority")}</legend>
+            <div className="task-filter-options">
+              {PRIORITIES.map((priority) => (
+                <label key={priority} className="task-filter-option">
+                  <input
+                    type="checkbox"
+                    checked={filterDraft.priorities.includes(priority)}
+                    onChange={() => toggleFilterPriority(priority)}
+                  />
+                  {priorityLabel(priority)}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <Field id="filter-assignee" label={t("tasks:filterAssignee")}>
+            <select
+              id="filter-assignee"
+              value={filterDraft.assignee}
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  assignee: event.target.value as TaskFilters["assignee"],
+                }))
+              }
+            >
+              <option value="any">{t("tasks:filterAssigneeAny")}</option>
+              <option value="me">{t("tasks:filterAssigneeMe")}</option>
+              <option value="unassigned">{t("tasks:filterAssigneeUnassigned")}</option>
+              {assignable.map((member) => (
+                <option key={member.membershipId} value={member.membershipId}>
+                  {member.displayName}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field id="filter-deadline" label={t("tasks:filterDeadline")}>
+            <select
+              id="filter-deadline"
+              value={filterDraft.deadline}
+              onChange={(event) =>
+                setFilterDraft((current) => ({
+                  ...current,
+                  deadline: event.target.value as TaskFilters["deadline"],
+                }))
+              }
+            >
+              <option value="any">{t("tasks:filterDeadlineAny")}</option>
+              <option value="overdue">{t("tasks:filterDeadlineOverdue")}</option>
+              <option value="today">{t("tasks:filterDeadlineToday")}</option>
+              <option value="week">{t("tasks:filterDeadlineWeek")}</option>
+              <option value="none">{t("tasks:filterDeadlineNone")}</option>
+            </select>
+          </Field>
+          {availableTags.length > 0 ? (
+            <fieldset className="task-filter-group">
+              <legend>{t("tasks:filterTags")}</legend>
+              <div className="task-filter-options">
+                {availableTags.map((tag) => (
+                  <label key={tag.tagId} className="task-filter-option">
+                    <input
+                      type="checkbox"
+                      checked={filterDraft.tagIds.includes(tag.tagId)}
+                      onChange={() => toggleFilterTag(tag.tagId)}
+                    />
+                    {tag.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
+        </div>
+        <div className="task-actions">
+          <button type="button" className="secondary-action" onClick={() => setFiltersOpen(false)}>
+            {t("common:cancel")}
+          </button>
+          <button type="button" className="primary-action" onClick={applyFilters}>
+            {t("tasks:applyFilters")}
+          </button>
+        </div>
+      </Dialog>
+
+      <Dialog
         open={Boolean(selected && capabilities)}
         titleId="task-detail-title"
-        title={t("tasks:detail")}
+        title={selected?.title ?? t("tasks:detail")}
         closeLabel={t("common:close")}
         onClose={closeDetail}
       >
         {selected && capabilities ? (
           <form className="task-ticket" onSubmit={onSave}>
             {error ? <StatusBanner tone="error">{error}</StatusBanner> : null}
-            <p className="task-ticket-meta">
-              <span>
-                {t("tasks:createdBy")} {selected.createdByDisplayName || selected.createdByEmail || "—"}
-              </span>
-              {selected.status === "Closed" ? (
-                <span className="task-unseen">{statusLabel("Closed")}</span>
-              ) : null}
-              {selected.status === "Closed" ? <span>{t("tasks:closedReadOnly")}</span> : null}
-            </p>
+
+            <div className="task-detail-header">
+              {taskReadOnly ? (
+                <h2 id="task-detail-title-visible">{selected.title}</h2>
+              ) : (
+                <Field id="edit-task-title-visible" label={t("tasks:fields.title")}>
+                  <input
+                    id="edit-task-title-visible"
+                    className="task-title-input task-detail-title-input"
+                    required
+                    maxLength={200}
+                    disabled={!capabilities.canEditDefinition}
+                    value={draft.title}
+                    onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+                  />
+                </Field>
+              )}
+              <p className="task-ticket-meta">
+                <span>
+                  {t("tasks:createdBy")} {selected.createdByDisplayName || selected.createdByEmail || "—"}
+                </span>
+                {selected.createdAtUtc ? (
+                  <time dateTime={selected.createdAtUtc}>
+                    {t("tasks:createdOn", {
+                      date: formatDateTimeUtc(selected.createdAtUtc, i18n.language),
+                    })}
+                  </time>
+                ) : null}
+              </p>
+            </div>
+
+            {selected.status === "Closed" ? (
+              <div className="task-closed-banner">
+                <span className="task-unseen">{t("tasks:closedBanner")}</span>
+                <span>
+                  {canReopen ? t("tasks:closedReadOnly") : t("tasks:closedReadOnlyNoReopen")}
+                </span>
+                {canReopen ? (
+                  <button type="button" className="secondary-action" disabled={busy} onClick={() => void onReopen()}>
+                    {t("tasks:reopenTask")}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
             {selected.unseenActivityCount > 0 ? (
               <button type="button" className="secondary-action" onClick={showChanges}>
                 {t("tasks:viewChanges")} · {t("tasks:newChanges", { count: selected.unseenActivityCount })}
               </button>
             ) : null}
+
             <div className="form-fields">
-              <Field id="edit-task-title" label={t("tasks:fields.title")}>
-                <input
-                  id="edit-task-title"
-                  className="task-title-input"
-                  required
-                  maxLength={200}
-                  disabled={!capabilities.canEditDefinition}
-                  value={draft.title}
-                  onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
-                />
-              </Field>
-              <Field id="edit-task-status" label={t("tasks:fields.status")}>
-                <select
-                  id="edit-task-status"
-                  disabled={statusOptions(selected, capabilities).length <= 1}
-                  value={draft.status}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, status: event.target.value as TaskStatus }))
-                  }
-                >
-                  {statusOptions(selected, capabilities).map((status) => (
-                    <option key={status} value={status}>
-                      {statusLabel(status)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="task-create-meta">
-                <TaskPriorityField
-                  id="edit-task-priority"
-                  value={draft.priority}
-                  disabled={!capabilities.canEditDefinition}
-                  onChange={(priority) => setDraft((current) => ({ ...current, priority }))}
-                />
-                <TaskDeadlineField
-                  id="edit-task-due"
-                  value={draft.dueDate}
-                  disabled={!capabilities.canEditDefinition}
-                  onChange={(dueDate) => setDraft((current) => ({ ...current, dueDate }))}
-                />
-              </div>
-              <Field id="edit-task-assignee" label={t("tasks:assignee")}>
-                <select
-                  id="edit-task-assignee"
-                  disabled={!capabilities.canReassign}
-                  value={pendingAssigneeId ?? draft.assigneeMembershipId}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setPendingAssigneeId(next === draft.assigneeMembershipId ? null : next);
-                  }}
-                >
-                  <option value="">{t("tasks:unassigned")}</option>
-                  {assignable.map((member) => (
-                    <option key={member.membershipId} value={member.membershipId}>
-                      {member.displayName} ({member.email})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {pendingAssigneeId !== null ? (
-                <div className="task-handoff-confirm">
-                  <p>{t("tasks:reassignConfirm", { name: pendingAssigneeName() })}</p>
-                  <p>{t("tasks:reassignConfirmBody")}</p>
-                  <div className="task-actions">
-                    <button type="button" className="secondary-action" onClick={() => setPendingAssigneeId(null)}>
-                      {t("common:cancel")}
-                    </button>
-                    <button type="button" className="primary-action" disabled={busy} onClick={() => void onConfirmHandoff()}>
-                      {t("tasks:reassign")}
-                    </button>
+              {taskReadOnly ? (
+                <dl className="task-detail-grid task-readonly-fields">
+                  <div>
+                    <dt>{t("tasks:fields.status")}</dt>
+                    <dd>{statusLabel(selected.status)}</dd>
                   </div>
-                </div>
-              ) : null}
-              <TagEditor
-                idPrefix="edit-task"
-                draft={draft}
-                tags={availableTags}
-                canEdit={capabilities.canManageTags}
-                onChange={setDraft}
-              />
-              <Field id="edit-task-description" label={t("tasks:originalDescription")}>
-                <textarea
-                  id="edit-task-description"
-                  maxLength={4000}
-                  disabled={!capabilities.canEditDefinition}
-                  value={draft.description}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, description: event.target.value }))
-                  }
-                />
-              </Field>
+                  <div>
+                    <dt>{t("tasks:fields.priority")}</dt>
+                    <dd>{priorityLabel(normalizePriority(selected.priority))}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("tasks:assignee")}</dt>
+                    <dd>{assigneeLabel(selected)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("tasks:fields.deadline")}</dt>
+                    <dd>{selected.dueDate ? formatTaskDate(selected.dueDate) : "—"}</dd>
+                  </div>
+                  {selected.tags && selected.tags.length > 0 ? (
+                    <div className="task-detail-grid-span">
+                      <dt>{t("tasks:fields.tags")}</dt>
+                      <dd className="task-readonly-tags">
+                        {selected.tags.map((tag) => (
+                          <span key={tag.tagId} className="task-tag-chip task-tag-chip-static">
+                            {tag.name}
+                          </span>
+                        ))}
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div className="task-detail-grid-span">
+                    <dt>{t("tasks:descriptionLabel")}</dt>
+                    <dd>{selected.description?.trim() ? selected.description : t("tasks:noDescription")}</dd>
+                  </div>
+                </dl>
+              ) : (
+                <>
+                  <div className="task-detail-grid">
+                    <Field id="edit-task-status" label={t("tasks:fields.status")}>
+                      <select
+                        id="edit-task-status"
+                        disabled={statusOptions(selected, capabilities).length <= 1}
+                        value={draft.status}
+                        onChange={(event) =>
+                          setDraft((current) => ({ ...current, status: event.target.value as TaskStatus }))
+                        }
+                      >
+                        {statusOptions(selected, capabilities).map((status) => (
+                          <option key={status} value={status}>
+                            {statusLabel(status)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <TaskPriorityField
+                      id="edit-task-priority"
+                      value={draft.priority}
+                      disabled={!capabilities.canEditDefinition}
+                      onChange={(priority) => setDraft((current) => ({ ...current, priority }))}
+                    />
+                    <Field id="edit-task-assignee" label={t("tasks:assignee")}>
+                      <select
+                        id="edit-task-assignee"
+                        disabled={!capabilities.canReassign}
+                        value={pendingAssigneeId ?? draft.assigneeMembershipId}
+                        onChange={(event) => {
+                          const next = event.target.value;
+                          setPendingAssigneeId(next === draft.assigneeMembershipId ? null : next);
+                        }}
+                      >
+                        <option value="">{t("tasks:unassigned")}</option>
+                        {assignable.map((member) => (
+                          <option key={member.membershipId} value={member.membershipId}>
+                            {member.displayName} ({member.email})
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <TaskDeadlineField
+                      id="edit-task-due"
+                      value={draft.dueDate}
+                      disabled={!capabilities.canEditDefinition}
+                      onChange={(dueDate) => setDraft((current) => ({ ...current, dueDate }))}
+                    />
+                  </div>
+                  {pendingAssigneeId !== null ? (
+                    <div className="task-handoff-confirm">
+                      <p>{t("tasks:reassignConfirm", { name: pendingAssigneeName() })}</p>
+                      <p>{t("tasks:reassignConfirmBody")}</p>
+                      <div className="task-actions">
+                        <button type="button" className="secondary-action" onClick={() => setPendingAssigneeId(null)}>
+                          {t("common:cancel")}
+                        </button>
+                        <button type="button" className="primary-action" disabled={busy} onClick={() => void onConfirmHandoff()}>
+                          {t("tasks:reassign")}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <TagEditor
+                    idPrefix="edit-task"
+                    draft={draft}
+                    tags={availableTags}
+                    canEdit={capabilities.canManageTags}
+                    onChange={setDraft}
+                  />
+                  <Field id="edit-task-description" label={t("tasks:descriptionLabel")}>
+                    <textarea
+                      id="edit-task-description"
+                      maxLength={4000}
+                      disabled={!capabilities.canEditDefinition}
+                      value={draft.description}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, description: event.target.value }))
+                      }
+                    />
+                  </Field>
+                </>
+              )}
             </div>
 
             <section>
-              <button
-                type="button"
-                className="task-section-toggle"
-                onClick={() => setCommentsOpen((current) => !current)}
-              >
-                <h3 className="task-section-title">{t("tasks:comments")}</h3>
-                <span>{commentsOpen ? t("tasks:hideComments") : t("tasks:showComments")}</span>
-              </button>
+              <TaskSectionDisclosure
+                label={t("tasks:comments")}
+                count={comments.length}
+                expanded={commentsOpen}
+                onToggle={() => setCommentsOpen((current) => !current)}
+                icon="comments"
+                showLabel={t("tasks:showComments")}
+                hideLabel={t("tasks:hideComments")}
+              />
               {commentsOpen ? (
                 <>
                   <ul className="task-comment-list">
@@ -824,7 +1308,7 @@ export function ProjectTasksPage() {
                         ) : (
                           <p>{comment.body}</p>
                         )}
-                        {comment.isOwn ? (
+                        {comment.isOwn && capabilities.canComment ? (
                           <div className="task-comment-actions">
                             {editingCommentId === comment.commentId ? (
                               <button
@@ -883,17 +1367,23 @@ export function ProjectTasksPage() {
             </section>
 
             <section ref={activityRef} id="task-activity">
-              <button
-                type="button"
-                className="task-section-toggle"
-                onClick={() => setActivityOpen((current) => !current)}
-              >
-                <h3 className="task-section-title">{t("tasks:activity")}</h3>
-                <span>{activityOpen ? t("tasks:hideActivity") : t("tasks:showActivity")}</span>
-              </button>
+              <TaskSectionDisclosure
+                label={t("tasks:activity")}
+                expanded={activityOpen}
+                onToggle={() => setActivityOpen((current) => !current)}
+                icon="activity"
+                showLabel={t("tasks:showActivity")}
+                hideLabel={t("tasks:hideActivity")}
+              />
               {activityOpen ? (
                 <ul className="task-activity-list">
-                  {activity.map((item) => (
+                  {activity.map((item) => {
+                    const changeText = formatActivityChange(item, {
+                      tags: availableTags,
+                      assignable,
+                      t,
+                    });
+                    return (
                     <li key={item.activityId} className="task-activity-item">
                       <div className="task-activity-meta">
                         <strong>{t(`tasks:activityEvent.${item.eventType}`, { defaultValue: item.eventType })}</strong>
@@ -902,47 +1392,77 @@ export function ProjectTasksPage() {
                           {formatDateTimeUtc(item.createdAtUtc, i18n.language)}
                         </time>
                       </div>
-                      {item.oldValue || item.newValue ? (
-                        <p>
-                          {item.oldValue ?? "—"} → {item.newValue ?? "—"}
-                        </p>
-                      ) : null}
+                      {changeText ? <p>{changeText}</p> : null}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               ) : null}
             </section>
 
-            {canSave || capabilities.canDelete ? (
-              <div className="task-actions">
+            {!capabilities.canDelete && capabilities.deleteBlockedReason ? (
+              <InfoCallout
+                icon={
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                    <circle cx="12" cy="12" r="2.75" />
+                  </svg>
+                }
+                title={t("tasks:deleteBlockedTitle")}
+                action={
+                  capabilities.allowedStatuses.includes("Closed") && selected?.status !== "Closed" ? (
+                    <button
+                      type="button"
+                      className="secondary-action"
+                      disabled={busy}
+                      onClick={() => void onCloseTaskFromCallout()}
+                    >
+                      {t("tasks:closeTaskAction")}
+                    </button>
+                  ) : null
+                }
+              >
+                <p>{t("tasks:deleteBlockedBody")}</p>
+              </InfoCallout>
+            ) : null}
+
+            {canSave || taskActionItems.length > 0 ? (
+              <div className="task-actions task-detail-actions">
                 {canSave ? (
-                  <button className="primary-action" type="submit" disabled={busy}>
-                    {busy ? t("common:loading") : t("tasks:save")}
+                  <button className="primary-action" type="submit" disabled={busy || !draftChanged}>
+                    {busy ? t("tasks:saving") : t("tasks:save")}
                   </button>
                 ) : null}
-                {capabilities.canDelete ? (
-                  confirmDelete ? (
-                    <div className="task-delete-confirm">
-                      <p>{t("tasks:deleteConfirm")}</p>
-                      <div className="task-actions">
-                        <button className="secondary-action" type="button" onClick={() => setConfirmDelete(false)}>
-                          {t("tasks:cancelDelete")}
-                        </button>
-                        <button className="secondary-action" type="button" disabled={busy} onClick={() => void onDelete()}>
-                          {t("tasks:delete")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button className="secondary-action" type="button" disabled={busy} onClick={() => setConfirmDelete(true)}>
-                      {t("tasks:delete")}
-                    </button>
-                  )
+                {taskActionItems.length > 0 ? (
+                  <ContextMenu label={t("tasks:detail")} items={taskActionItems} />
                 ) : null}
               </div>
             ) : null}
           </form>
         ) : null}
+      </Dialog>
+
+      <Dialog
+        open={deleteOpen}
+        size="compact"
+        titleId="delete-task-title"
+        title={t("tasks:deleteConfirmTitle")}
+        closeLabel={t("common:close")}
+        onClose={() => setDeleteOpen(false)}
+      >
+        <p>
+          {selected
+            ? t("tasks:deleteConfirmNamed", { title: selected.title })
+            : t("tasks:deleteConfirmBody")}
+        </p>
+        <div className="task-actions">
+          <button type="button" className="secondary-action" disabled={busy} onClick={() => setDeleteOpen(false)}>
+            {t("tasks:cancelDelete")}
+          </button>
+          <button type="button" className="secondary-action" disabled={busy} onClick={() => void onDelete()}>
+            {t("tasks:delete")}
+          </button>
+        </div>
       </Dialog>
     </section>
   );

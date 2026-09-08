@@ -221,6 +221,8 @@ public static class TaskCollaborationEndpoints
                     item.TaskId,
                     item.WorkspaceId,
                     item.ProjectId,
+                    item.TaskTitle,
+                    item.ProjectName,
                     item.IsRead,
                     item.CreatedAtUtc))
                 .ToListAsync(cancellationToken);
@@ -337,5 +339,7 @@ public sealed record WorkNotificationResponse(
     Guid? TaskId,
     Guid? WorkspaceId,
     Guid? ProjectId,
+    string? TaskTitle,
+    string? ProjectName,
     bool IsRead,
     DateTimeOffset CreatedAtUtc);

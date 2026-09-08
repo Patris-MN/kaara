@@ -22,6 +22,45 @@ namespace PTS.Host.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("PTS.Host.Persistence.InvitationWorkspaceGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccessLevel")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("access_level");
+
+                    b.Property<Guid>("InvitationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invitation_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("WorkspaceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workspace_id");
+
+                    b.Property<string>("WorkspaceName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("workspace_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvitationId")
+                        .HasDatabaseName("ix_invitation_workspace_grants_invitation_id");
+
+                    b.ToTable("invitation_workspace_grants", (string)null);
+                });
+
             modelBuilder.Entity("PTS.Host.Persistence.Testing.TenantIsolationTestRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -207,7 +246,7 @@ namespace PTS.Host.Persistence.Migrations
                     b.ToTable("tenants", (string)null);
                 });
 
-            modelBuilder.Entity("PTS.Modules.WorkManagement.Project", b =>
+            modelBuilder.Entity("PTS.Modules.Tenancy.TenantInvitation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -218,11 +257,107 @@ namespace PTS.Host.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
+                    b.Property<Guid>("CreatedByMembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_membership_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at_utc");
+
+                    b.Property<string>("InvitedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("invited_email");
+
+                    b.Property<string>("InviterDisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("inviter_display_name");
+
+                    b.Property<Guid?>("InviteeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invitee_user_id");
+
+                    b.Property<Guid?>("MembershipId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("membership_id");
+
+                    b.Property<string>("OrganizationName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("organization_name");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at_utc");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("role");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UsedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_tenant_invitations_token_hash");
+
+                    b.HasIndex("TenantId", "InvitedEmail")
+                        .HasDatabaseName("ix_tenant_invitations_tenant_email");
+
+                    b.ToTable("tenant_invitations", (string)null);
+                });
+
+            modelBuilder.Entity("PTS.Modules.WorkManagement.Project", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccentToken")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("accent_token");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
+
+                    b.Property<string>("NameNormalized")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_normalized");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -243,6 +378,10 @@ namespace PTS.Host.Persistence.Migrations
 
                     b.HasIndex("WorkspaceId")
                         .HasDatabaseName("ix_projects_workspace_id");
+
+                    b.HasIndex("TenantId", "WorkspaceId", "NameNormalized")
+                        .IsUnique()
+                        .HasDatabaseName("ux_projects_tenant_workspace_name_normalized");
 
                     b.ToTable("projects", (string)null);
                 });
@@ -266,6 +405,11 @@ namespace PTS.Host.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("project_id");
 
+                    b.Property<string>("ProjectName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("project_name");
+
                     b.Property<Guid>("RecipientMembershipId")
                         .HasColumnType("uuid")
                         .HasColumnName("recipient_membership_id");
@@ -273,6 +417,11 @@ namespace PTS.Host.Persistence.Migrations
                     b.Property<Guid?>("TaskId")
                         .HasColumnType("uuid")
                         .HasColumnName("task_id");
+
+                    b.Property<string>("TaskTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("task_title");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -290,6 +439,9 @@ namespace PTS.Host.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_notifications");
+
+                    b.HasIndex("RecipientMembershipId", "CreatedAtUtc")
+                        .HasDatabaseName("ix_notifications_recipient_created");
 
                     b.HasIndex("TenantId", "TaskId");
 
@@ -375,6 +527,10 @@ namespace PTS.Host.Persistence.Migrations
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("date")
                         .HasColumnName("due_date");
+
+                    b.Property<bool>("HasExternalEngagement")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_external_engagement");
 
                     b.Property<string>("Priority")
                         .IsRequired()
@@ -593,15 +749,34 @@ namespace PTS.Host.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<string>("NameNormalized")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_normalized");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at_utc");
 
                     b.HasKey("Id")
                         .HasName("pk_workspaces");
@@ -611,6 +786,10 @@ namespace PTS.Host.Persistence.Migrations
 
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_workspaces_tenant_id");
+
+                    b.HasIndex("TenantId", "NameNormalized")
+                        .IsUnique()
+                        .HasDatabaseName("ux_workspaces_tenant_name_normalized");
 
                     b.ToTable("workspaces", (string)null);
                 });

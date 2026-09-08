@@ -1,11 +1,12 @@
 # Work Management Module
 
-Owns tenant-scoped workspaces and projects (tasks remain out of scope).
+Owns tenant-scoped workspaces, projects, and tasks (Phase 6 product; Phase 7 did not change this module).
 
-Entities:
+Entities include:
 
 - `Workspace` — `Id`, `TenantId`, `Name`, `CreatedAtUtc`
 - `Project` — `Id`, `TenantId`, `WorkspaceId`, `Name`, `CreatedAtUtc`
+- `WorkTask` plus tags, comments, activity, read-state, and in-app notifications
 
 PostgreSQL RLS (Host migration) scopes both tables to `app.current_tenant_id`.
 Projects cannot reference a workspace in another tenant: composite FK

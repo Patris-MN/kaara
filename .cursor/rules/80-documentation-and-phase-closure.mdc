@@ -1,0 +1,32 @@
+---
+description: README must stay current; a phase cannot be declared complete against a stale baseline
+alwaysApply: true
+---
+
+# Documentation and Phase Closure
+
+Every implementation phase or material product slice **must update `README.md`
+before that phase can be declared complete.**
+
+`README.md` is the current product baseline. It must always reflect:
+
+- the current completed phase
+- major implemented capabilities
+- architecture and security changes that landed in that phase
+- new migrations relevant to the current baseline
+- test/verification status from a run in this workspace (never historical
+  assumed counts)
+- intentionally unsupported / out-of-scope functionality
+- known verification gaps (including browser QA not run)
+
+## Verdicts
+
+A phase **must not** receive a final PASS / VERIFIED / CLOSED verdict while
+`README.md` still describes an older product baseline (for example, calling the
+repo Phase 4 after Tasks exist).
+
+Do not claim browser QA passed unless an interactive walkthrough was actually
+performed in this session. If browser tools were unavailable, say so.
+
+Do not start the next numbered phase until `README.md` matches the code that
+just shipped.

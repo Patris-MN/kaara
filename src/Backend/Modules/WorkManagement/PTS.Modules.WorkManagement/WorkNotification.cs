@@ -21,6 +21,12 @@ public sealed class WorkNotification
 
     public Guid? ProjectId { get; set; }
 
+    /// <summary>Task title snapshot for inbox display without cross-tenant joins.</summary>
+    public string? TaskTitle { get; set; }
+
+    /// <summary>Project name snapshot for inbox secondary context.</summary>
+    public string? ProjectName { get; set; }
+
     public bool IsRead { get; set; }
 
     public DateTimeOffset CreatedAtUtc { get; set; }

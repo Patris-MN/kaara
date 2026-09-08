@@ -9,4 +9,5 @@ public sealed record AccessibleTenant(
     string Name,
     string Slug,
     MembershipRole Role,
-    MembershipStatus Status);
+    MembershipStatus Status,
+    int WorkspaceCount = 0);

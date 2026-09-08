@@ -11,4 +11,10 @@ public interface IUserAccountStore
     Task<UserCredential?> FindCredentialByEmailAsync(string email, CancellationToken cancellationToken = default);
 
     Task<User?> FindByIdAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    Task<UserCredential?> FindCredentialByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    Task UpdateUserAsync(User user, CancellationToken cancellationToken = default);
+
+    Task UpdateCredentialAsync(UserCredential credential, CancellationToken cancellationToken = default);
 }

@@ -61,7 +61,7 @@ public sealed class TenantLifecycleAndWorkManagementHttpTests : IClassFixture<Pt
 
         var pr = await clientA.PostAsJsonAsync(
             $"/tenants/{tenant.TenantId}/workspaces/{workspace.WorkspaceId}/projects",
-            new CreateProjectRequest("Project A", TenantId: Guid.NewGuid()));
+            TestProjectFactory.CreateRequest("Project A", tenantId: Guid.NewGuid()));
         pr.EnsureSuccessStatusCode();
         var project = await pr.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(project);
@@ -81,7 +81,7 @@ public sealed class TenantLifecycleAndWorkManagementHttpTests : IClassFixture<Pt
             HttpStatusCode.Forbidden,
             (await clientB.PostAsJsonAsync(
                 $"/tenants/{tenant.TenantId}/workspaces",
-                new CreateWorkspaceRequest("Hijack", workspace.TenantId))).StatusCode);
+                new CreateWorkspaceRequest("Hijack", TenantId: workspace.TenantId))).StatusCode);
     }
 
     [SkippableFact]
@@ -247,6 +247,277 @@ public sealed class TenantLifecycleAndWorkManagementHttpTests : IClassFixture<Pt
         var unauthenticated = _web.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await unauthenticated.GetAsync("/tenants")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await unauthenticated.GetAsync("/invitations")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task Tenant_directory_includes_workspace_count_only_for_the_caller_memberships()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var clientA = _web.CreateClient();
+        var clientB = _web.CreateClient();
+        var userA = await RegisterAndLoginAsync(clientA, $"cnt-a-{Guid.NewGuid():N}@example.test", "User A");
+        var userB = await RegisterAndLoginAsync(clientB, $"cnt-b-{Guid.NewGuid():N}@example.test", "User B");
+        clientA.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", userA.AccessToken);
+        clientB.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", userB.AccessToken);
+
+        var emptyOrg = await clientA.PostAsJsonAsync(
+            "/tenants",
+            new CreateTenantRequest("Empty Org", $"empty-{Guid.NewGuid():N}"[..20]));
+        emptyOrg.EnsureSuccessStatusCode();
+        var emptyTenant = await emptyOrg.Content.ReadFromJsonAsync<TenantResponse>();
+
+        var busyOrg = await clientA.PostAsJsonAsync(
+            "/tenants",
+            new CreateTenantRequest("Busy Org", $"busy-{Guid.NewGuid():N}"[..20]));
+        busyOrg.EnsureSuccessStatusCode();
+        var busyTenant = await busyOrg.Content.ReadFromJsonAsync<TenantResponse>();
+        Assert.NotNull(emptyTenant);
+        Assert.NotNull(busyTenant);
+
+        (await clientA.PostAsJsonAsync(
+            $"/tenants/{busyTenant.TenantId}/workspaces",
+            new CreateWorkspaceRequest("One"))).EnsureSuccessStatusCode();
+        (await clientA.PostAsJsonAsync(
+            $"/tenants/{busyTenant.TenantId}/workspaces",
+            new CreateWorkspaceRequest("Two"))).EnsureSuccessStatusCode();
+
+        var otherOrg = await clientB.PostAsJsonAsync(
+            "/tenants",
+            new CreateTenantRequest("Other Org", $"other-{Guid.NewGuid():N}"[..20]));
+        otherOrg.EnsureSuccessStatusCode();
+        var otherTenant = await otherOrg.Content.ReadFromJsonAsync<TenantResponse>();
+        Assert.NotNull(otherTenant);
+        (await clientB.PostAsJsonAsync(
+            $"/tenants/{otherTenant.TenantId}/workspaces",
+            new CreateWorkspaceRequest("Foreign"))).EnsureSuccessStatusCode();
+
+        var listedA = await clientA.GetFromJsonAsync<TenantMembershipResponse[]>("/tenants");
+        var emptyRow = Assert.Single(listedA!, t => t.TenantId == emptyTenant.TenantId);
+        var busyRow = Assert.Single(listedA!, t => t.TenantId == busyTenant.TenantId);
+        Assert.Equal(0, emptyRow.WorkspaceCount);
+        Assert.Equal(2, busyRow.WorkspaceCount);
+        Assert.True(emptyRow.CanManage);
+        Assert.DoesNotContain(listedA!, t => t.TenantId == otherTenant.TenantId);
+
+        var listedB = await clientB.GetFromJsonAsync<TenantMembershipResponse[]>("/tenants");
+        var otherRow = Assert.Single(listedB!, t => t.TenantId == otherTenant.TenantId);
+        Assert.Equal(1, otherRow.WorkspaceCount);
+        Assert.DoesNotContain(listedB!, t => t.TenantId == busyTenant.TenantId);
+    }
+
+    [SkippableFact]
+    public async Task Owner_can_update_organization_name_and_member_cannot()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var clientOwner = _web.CreateClient();
+        var clientMember = _web.CreateClient();
+        var clientStranger = _web.CreateClient();
+        var memberEmail = $"upd-m-{Guid.NewGuid():N}@example.test";
+        var owner = await RegisterAndLoginAsync(clientOwner, $"upd-o-{Guid.NewGuid():N}@example.test", "Owner");
+        var member = await RegisterAndLoginAsync(clientMember, memberEmail, "Member");
+        var stranger = await RegisterAndLoginAsync(clientStranger, $"upd-s-{Guid.NewGuid():N}@example.test", "Stranger");
+        clientOwner.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", owner.AccessToken);
+        clientMember.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", member.AccessToken);
+        clientStranger.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stranger.AccessToken);
+
+        var created = await clientOwner.PostAsJsonAsync(
+            "/tenants",
+            new CreateTenantRequest("Original Name", $"upd-{Guid.NewGuid():N}"[..20]));
+        created.EnsureSuccessStatusCode();
+        var tenant = await created.Content.ReadFromJsonAsync<TenantResponse>();
+        Assert.NotNull(tenant);
+
+        (await clientOwner.PostAsJsonAsync(
+            $"/tenants/{tenant.TenantId}/invitations",
+            new InviteMemberRequest(memberEmail))).EnsureSuccessStatusCode();
+        (await clientMember.PostAsJsonAsync(
+            $"/tenants/{tenant.TenantId}/invitations/accept",
+            new { })).EnsureSuccessStatusCode();
+
+        var memberUpdate = await clientMember.PutAsJsonAsync(
+            $"/tenants/{tenant.TenantId}",
+            new UpdateTenantRequest("Hijacked"));
+        Assert.Equal(HttpStatusCode.Forbidden, memberUpdate.StatusCode);
+
+        var strangerUpdate = await clientStranger.PutAsJsonAsync(
+            $"/tenants/{tenant.TenantId}",
+            new UpdateTenantRequest("Hijacked"));
+        Assert.Equal(HttpStatusCode.Forbidden, strangerUpdate.StatusCode);
+
+        var ownerUpdate = await clientOwner.PutAsJsonAsync(
+            $"/tenants/{tenant.TenantId}",
+            new UpdateTenantRequest("Renamed Org"));
+        ownerUpdate.EnsureSuccessStatusCode();
+        var updated = await ownerUpdate.Content.ReadFromJsonAsync<TenantResponse>();
+        Assert.Equal("Renamed Org", updated!.Name);
+        Assert.Equal(tenant.Slug, updated.Slug);
+
+        var listed = await clientOwner.GetFromJsonAsync<TenantMembershipResponse[]>("/tenants");
+        var row = Assert.Single(listed!, t => t.TenantId == tenant.TenantId);
+        Assert.Equal("Renamed Org", row.Name);
+        Assert.True(row.CanManage);
+
+        var memberList = await clientMember.GetFromJsonAsync<TenantMembershipResponse[]>("/tenants");
+        var memberRow = Assert.Single(memberList!, t => t.TenantId == tenant.TenantId);
+        Assert.False(memberRow.CanManage);
+        Assert.Equal("Member", memberRow.Role);
+    }
+
+    [SkippableFact]
+    public async Task Workspace_list_is_isolated_per_tenant_for_a_multi_organization_user()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var client = _web.CreateClient();
+        var user = await RegisterAndLoginAsync(client, $"iso-{Guid.NewGuid():N}@example.test", "Multi Org User");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", user.AccessToken);
+
+        var tenantA = await CreateTenantAsync(client, "Tenant A", $"tenant-a-{Guid.NewGuid():N}"[..20]);
+        var tenantB = await CreateTenantAsync(client, "Tenant B", $"tenant-b-{Guid.NewGuid():N}"[..20]);
+        var tenantC = await CreateTenantAsync(client, "Tenant C", $"tenant-c-{Guid.NewGuid():N}"[..20]);
+
+        await CreateWorkspaceAsync(client, tenantA.TenantId, "A-Workspace-1");
+        await CreateWorkspaceAsync(client, tenantA.TenantId, "A-Workspace-2");
+        await CreateWorkspaceAsync(client, tenantB.TenantId, "B-Workspace-1");
+
+        await AssertWorkspaceNamesAsync(client, tenantA.TenantId, "A-Workspace-1", "A-Workspace-2");
+        await AssertWorkspaceNamesAsync(client, tenantB.TenantId, "B-Workspace-1");
+        await AssertWorkspaceNamesAsync(client, tenantC.TenantId);
+
+        await CreateWorkspaceAsync(client, tenantC.TenantId, "C-Workspace-1");
+
+        await AssertWorkspaceNamesAsync(client, tenantC.TenantId, "C-Workspace-1");
+        await AssertWorkspaceNamesAsync(client, tenantA.TenantId, "A-Workspace-1", "A-Workspace-2");
+        await AssertWorkspaceNamesAsync(client, tenantB.TenantId, "B-Workspace-1");
+
+        var switchOrder = new[]
+        {
+            tenantA.TenantId,
+            tenantC.TenantId,
+            tenantB.TenantId,
+            tenantA.TenantId,
+            tenantC.TenantId,
+        };
+        var expectedByTenant = new Dictionary<Guid, string[]>
+        {
+            [tenantA.TenantId] = ["A-Workspace-1", "A-Workspace-2"],
+            [tenantB.TenantId] = ["B-Workspace-1"],
+            [tenantC.TenantId] = ["C-Workspace-1"],
+        };
+
+        foreach (var tenantId in switchOrder)
+        {
+            await AssertWorkspaceNamesAsync(client, tenantId, expectedByTenant[tenantId]);
+        }
+
+        var directory = await client.GetFromJsonAsync<TenantMembershipResponse[]>("/tenants");
+        Assert.NotNull(directory);
+        Assert.Equal(2, Assert.Single(directory!, row => row.TenantId == tenantA.TenantId).WorkspaceCount);
+        Assert.Equal(1, Assert.Single(directory!, row => row.TenantId == tenantB.TenantId).WorkspaceCount);
+        Assert.Equal(1, Assert.Single(directory!, row => row.TenantId == tenantC.TenantId).WorkspaceCount);
+    }
+
+    private static async Task<TenantResponse> CreateTenantAsync(HttpClient client, string name, string slug)
+    {
+        var response = await client.PostAsJsonAsync("/tenants", new CreateTenantRequest(name, slug));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<TenantResponse>())!;
+    }
+
+    private static async Task CreateWorkspaceAsync(HttpClient client, Guid tenantId, string name)
+    {
+        var response = await client.PostAsJsonAsync(
+            $"/tenants/{tenantId}/workspaces",
+            new CreateWorkspaceRequest(name));
+        response.EnsureSuccessStatusCode();
+        var workspace = await response.Content.ReadFromJsonAsync<WorkspaceResponse>();
+        Assert.NotNull(workspace);
+        Assert.Equal(tenantId, workspace.TenantId);
+    }
+
+    private static async Task AssertWorkspaceNamesAsync(
+        HttpClient client,
+        Guid tenantId,
+        params string[] expectedNames)
+    {
+        var listed = await client.GetFromJsonAsync<WorkspaceResponse[]>($"/tenants/{tenantId}/workspaces");
+        Assert.NotNull(listed);
+        Assert.All(listed!, workspace => Assert.Equal(tenantId, workspace.TenantId));
+        Assert.Equal(expectedNames.OrderBy(name => name), listed!.Select(workspace => workspace.Name).OrderBy(name => name));
+    }
+
+    [SkippableFact]
+    public async Task Workspace_metadata_can_be_created_and_updated_by_authorized_users()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var client = _web.CreateClient();
+        var owner = await RegisterAndLoginAsync(client, $"wmeta-{Guid.NewGuid():N}@example.test", "Owner");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", owner.AccessToken);
+
+        var tenant = await CreateTenantAsync(client, "Metadata Org", $"meta-{Guid.NewGuid():N}"[..20]);
+        var created = await client.PostAsJsonAsync(
+            $"/tenants/{tenant.TenantId}/workspaces",
+            new CreateWorkspaceRequest("Launch Pad", "Platform team area", new DateOnly(2026, 1, 15)));
+        created.EnsureSuccessStatusCode();
+        var workspace = await created.Content.ReadFromJsonAsync<WorkspaceResponse>();
+        Assert.NotNull(workspace);
+        Assert.Equal("Launch Pad", workspace.Name);
+        Assert.Equal("Platform team area", workspace.Description);
+        Assert.Equal(new DateOnly(2026, 1, 15), workspace.StartDate);
+        Assert.True(workspace.CanManage);
+        Assert.True(workspace.UpdatedAtUtc >= workspace.CreatedAtUtc);
+
+        var updated = await client.PutAsJsonAsync(
+            $"/tenants/{tenant.TenantId}/workspaces/{workspace.WorkspaceId}",
+            new UpdateWorkspaceRequest("Launch Pad 2", "Updated copy", new DateOnly(2026, 2, 1)));
+        updated.EnsureSuccessStatusCode();
+        var saved = await updated.Content.ReadFromJsonAsync<WorkspaceResponse>();
+        Assert.NotNull(saved);
+        Assert.Equal("Launch Pad 2", saved.Name);
+        Assert.Equal("Updated copy", saved.Description);
+        Assert.Equal(new DateOnly(2026, 2, 1), saved.StartDate);
+        Assert.True(saved.UpdatedAtUtc >= workspace.UpdatedAtUtc);
+
+        var listed = await client.GetFromJsonAsync<WorkspaceResponse[]>($"/tenants/{tenant.TenantId}/workspaces");
+        Assert.Contains(listed!, row => row.WorkspaceId == workspace.WorkspaceId && row.Name == "Launch Pad 2");
+    }
+
+    [SkippableFact]
+    public async Task Workspace_list_returns_legacy_and_modern_metadata_together()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var client = _web.CreateClient();
+        var owner = await RegisterAndLoginAsync(client, $"legacy-{Guid.NewGuid():N}@example.test", "Owner");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", owner.AccessToken);
+
+        var tenant = await CreateTenantAsync(client, "Legacy Org", $"legacy-{Guid.NewGuid():N}"[..20]);
+        var legacyResponse = await client.PostAsJsonAsync(
+            $"/tenants/{tenant.TenantId}/workspaces",
+            new CreateWorkspaceRequest("e-razha"));
+        legacyResponse.EnsureSuccessStatusCode();
+        var legacy = await legacyResponse.Content.ReadFromJsonAsync<WorkspaceResponse>();
+        Assert.NotNull(legacy);
+
+        var modernResponse = await client.PostAsJsonAsync(
+            $"/tenants/{tenant.TenantId}/workspaces",
+            new CreateWorkspaceRequest("Modern Pad", "Team area", new DateOnly(2026, 3, 1)));
+        modernResponse.EnsureSuccessStatusCode();
+
+        var listed = await client.GetFromJsonAsync<WorkspaceResponse[]>($"/tenants/{tenant.TenantId}/workspaces");
+        Assert.NotNull(listed);
+        Assert.Equal(2, listed!.Length);
+
+        var legacyRow = Assert.Single(listed, row => row.WorkspaceId == legacy.WorkspaceId);
+        Assert.Equal("e-razha", legacyRow.Name);
+        Assert.Null(legacyRow.Description);
+        Assert.Null(legacyRow.StartDate);
+        Assert.True(legacyRow.UpdatedAtUtc >= legacyRow.CreatedAtUtc);
+
+        Assert.Contains(listed, row => row.Name == "Modern Pad" && row.Description == "Team area");
     }
 
     private static async Task<LoginResponse> RegisterAndLoginAsync(HttpClient client, string email, string displayName)

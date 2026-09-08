@@ -25,6 +25,7 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
+  updateLocalUser: (patch: Partial<AuthUser>) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -32,7 +33,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => Boolean(readAccessToken()));
 
   const logout = useCallback(() => {
     clearSession();
@@ -53,7 +54,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const stored = readAccessToken();
     if (!stored) {
-      setIsLoading(false);
       return;
     }
 
@@ -102,14 +102,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await registerAccount(email, password, displayName);
   }, []);
 
+  const updateLocalUser = useCallback((patch: Partial<AuthUser>) => {
+    setUser((current) => (current ? { ...current, ...patch } : current));
+  }, []);
+
   const value = useMemo(
-    () => ({ user, token, isLoading, login, register, logout }),
-    [user, token, isLoading, login, register, logout],
+    () => ({ user, token, isLoading, login, register, logout, updateLocalUser }),
+    [user, token, isLoading, login, register, logout, updateLocalUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// Hook colocated with its provider. Splitting the file would not change behavior.
+// oxlint-disable-next-line react/only-export-components
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) {

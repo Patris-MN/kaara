@@ -10,6 +10,14 @@ public interface ITenantLifecycleService
 {
     Task<Tenant> CreateTenantAsync(string name, string slug, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Updates organization metadata (name). Authorization is Owner/Admin
+    /// Active membership, evaluated on the server — never from the client.
+    /// The identifier (slug) is not mutable: routing and uniqueness treat it
+    /// as a creation-time value; TenantId remains the real identity.
+    /// </summary>
+    Task<Tenant> UpdateTenantAsync(Guid tenantId, string name, CancellationToken cancellationToken = default);
+
     Task<Membership> InviteAsync(Guid tenantId, Guid inviteeUserId, CancellationToken cancellationToken = default);
 
     Task<Membership> AcceptInvitationAsync(Guid tenantId, CancellationToken cancellationToken = default);

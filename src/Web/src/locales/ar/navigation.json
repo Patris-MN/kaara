@@ -5,7 +5,11 @@
   "workspace": "مساحة العمل",
   "soon": "قريباً",
   "tenants": "المنظمات",
+  "members": "الأعضاء",
   "workspaces": "مساحات العمل",
   "projects": "المشاريع",
-  "tasks": "المهام"
+  "tasks": "المهام",
+  "selectOrganizationFirst": "اختر منظمة أولاً",
+  "selectWorkspaceFirst": "اختر مساحة عمل أولاً",
+  "selectProjectFirst": "اختر مشروعاً أولاً"
 }

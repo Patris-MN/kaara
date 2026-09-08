@@ -52,6 +52,7 @@ internal static class TaskCollaboration
         string? oldValue,
         string? newValue)
     {
+        MarkExternalEngagementIfNeeded(session, task);
         session.DbContext.WorkTaskActivities.Add(new WorkTaskActivity
         {
             Id = Guid.NewGuid(),
@@ -65,10 +66,23 @@ internal static class TaskCollaboration
         });
     }
 
+    public static async Task<string?> ResolveProjectNameAsync(
+        TenantRlsSession session,
+        Guid projectId,
+        CancellationToken cancellationToken)
+    {
+        return await session.DbContext.Projects
+            .AsNoTracking()
+            .Where(project => project.TenantId == session.TenantId && project.Id == projectId)
+            .Select(project => project.Name)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public static void NotifyParticipants(
         TenantRlsSession session,
         WorkTask task,
         WorkNotificationType type,
+        string? projectName = null,
         Guid? extraRecipientId = null)
     {
         var recipients = new HashSet<Guid>();
@@ -86,18 +100,12 @@ internal static class TaskCollaboration
         recipients.Remove(session.MembershipId);
         foreach (var recipientId in recipients)
         {
-            session.DbContext.WorkNotifications.Add(new WorkNotification
-            {
-                Id = Guid.NewGuid(),
-                TenantId = session.TenantId,
-                RecipientMembershipId = recipientId,
-                Type = type,
-                TaskId = task.Id,
-                WorkspaceId = task.WorkspaceId,
-                ProjectId = task.ProjectId,
-                IsRead = false,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            session.DbContext.WorkNotifications.Add(CreateNotification(
+                session,
+                task,
+                recipientId,
+                type,
+                projectName));
         }
     }
 
@@ -105,7 +113,8 @@ internal static class TaskCollaboration
         TenantRlsSession session,
         WorkTask task,
         Guid? previousAssigneeId,
-        Guid? nextAssigneeId)
+        Guid? nextAssigneeId,
+        string? projectName = null)
     {
         if (nextAssigneeId == previousAssigneeId)
         {
@@ -114,38 +123,49 @@ internal static class TaskCollaboration
 
         if (nextAssigneeId is Guid next && next != session.MembershipId)
         {
-            session.DbContext.WorkNotifications.Add(new WorkNotification
-            {
-                Id = Guid.NewGuid(),
-                TenantId = session.TenantId,
-                RecipientMembershipId = next,
-                Type = previousAssigneeId is null
+            session.DbContext.WorkNotifications.Add(CreateNotification(
+                session,
+                task,
+                next,
+                previousAssigneeId is null
                     ? WorkNotificationType.TaskAssigned
                     : WorkNotificationType.TaskReassigned,
-                TaskId = task.Id,
-                WorkspaceId = task.WorkspaceId,
-                ProjectId = task.ProjectId,
-                IsRead = false,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            });
+                projectName));
         }
 
         if (task.CreatedByMembershipId != session.MembershipId &&
             (previousAssigneeId is not null || nextAssigneeId is not null))
         {
-            session.DbContext.WorkNotifications.Add(new WorkNotification
-            {
-                Id = Guid.NewGuid(),
-                TenantId = session.TenantId,
-                RecipientMembershipId = task.CreatedByMembershipId,
-                Type = WorkNotificationType.TaskReassigned,
-                TaskId = task.Id,
-                WorkspaceId = task.WorkspaceId,
-                ProjectId = task.ProjectId,
-                IsRead = false,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-            });
+            session.DbContext.WorkNotifications.Add(CreateNotification(
+                session,
+                task,
+                task.CreatedByMembershipId,
+                WorkNotificationType.TaskReassigned,
+                projectName));
         }
+    }
+
+    private static WorkNotification CreateNotification(
+        TenantRlsSession session,
+        WorkTask task,
+        Guid recipientMembershipId,
+        WorkNotificationType type,
+        string? projectName)
+    {
+        return new WorkNotification
+        {
+            Id = Guid.NewGuid(),
+            TenantId = session.TenantId,
+            RecipientMembershipId = recipientMembershipId,
+            Type = type,
+            TaskId = task.Id,
+            WorkspaceId = task.WorkspaceId,
+            ProjectId = task.ProjectId,
+            TaskTitle = string.IsNullOrWhiteSpace(task.Title) ? null : task.Title.Trim(),
+            ProjectName = projectName,
+            IsRead = false,
+            CreatedAtUtc = DateTimeOffset.UtcNow,
+        };
     }
 
     public static async Task<IReadOnlyList<Guid>?> SyncTagsAsync(
@@ -194,10 +214,31 @@ internal static class TaskCollaboration
         var existing = await session.DbContext.WorkTaskTags
             .Where(link => link.TaskId == task.Id)
             .ToListAsync(cancellationToken);
+
+        var tagIdsForLookup = existing.Select(item => item.TagId)
+            .Concat(desired)
+            .Distinct()
+            .ToArray();
+        var tagNames = tagIdsForLookup.Length == 0
+            ? new Dictionary<Guid, string>()
+            : await session.DbContext.WorkTags
+                .AsNoTracking()
+                .Where(tag => tagIdsForLookup.Contains(tag.Id))
+                .ToDictionaryAsync(tag => tag.Id, tag => tag.Name, cancellationToken);
+
+        foreach (var entry in session.DbContext.ChangeTracker.Entries<WorkTag>())
+        {
+            if (entry.State == EntityState.Added && desired.Contains(entry.Entity.Id))
+            {
+                tagNames[entry.Entity.Id] = entry.Entity.Name;
+            }
+        }
+
         foreach (var link in existing.Where(item => !desired.Contains(item.TagId)))
         {
             session.DbContext.WorkTaskTags.Remove(link);
-            RecordActivity(session, task, WorkTaskActivityType.TagRemoved, link.TagId.ToString(), null);
+            var removedName = tagNames.GetValueOrDefault(link.TagId);
+            RecordActivity(session, task, WorkTaskActivityType.TagRemoved, removedName, null);
         }
 
         var alreadyLinked = existing.Select(item => item.TagId).ToHashSet();
@@ -209,7 +250,8 @@ internal static class TaskCollaboration
                 TaskId = task.Id,
                 TagId = tagId,
             });
-            RecordActivity(session, task, WorkTaskActivityType.TagAdded, null, tagId.ToString());
+            var addedName = tagNames.GetValueOrDefault(tagId);
+            RecordActivity(session, task, WorkTaskActivityType.TagAdded, null, addedName);
         }
 
         return desired.ToArray();
@@ -249,19 +291,21 @@ internal static class TaskCollaboration
 
     public static async Task MarkSeenAsync(
         TenantRlsSession session,
-        Guid taskId,
+        WorkTask task,
         CancellationToken cancellationToken)
     {
+        MarkExternalEngagementIfNeeded(session, task);
+
         var existing = await session.DbContext.WorkTaskReadStates
             .FirstOrDefaultAsync(
-                state => state.TaskId == taskId && state.MembershipId == session.MembershipId,
+                state => state.TaskId == task.Id && state.MembershipId == session.MembershipId,
                 cancellationToken);
         if (existing is null)
         {
             session.DbContext.WorkTaskReadStates.Add(new WorkTaskReadState
             {
                 TenantId = session.TenantId,
-                TaskId = taskId,
+                TaskId = task.Id,
                 MembershipId = session.MembershipId,
                 LastViewedAtUtc = DateTimeOffset.UtcNow,
             });
@@ -271,9 +315,114 @@ internal static class TaskCollaboration
         existing.LastViewedAtUtc = DateTimeOffset.UtcNow;
     }
 
+    public static void MarkExternalEngagementIfNeeded(TenantRlsSession session, WorkTask task)
+    {
+        if (session.MembershipId != task.CreatedByMembershipId)
+        {
+            task.HasExternalEngagement = true;
+        }
+    }
+
+    public static async Task<bool> HasNonCreatorEngagementAsync(
+        TenantRlsSession session,
+        WorkTask task,
+        CancellationToken cancellationToken)
+    {
+        var engagement = await GetNonCreatorEngagementByTaskAsync(session, [task], cancellationToken);
+        return engagement.GetValueOrDefault(task.Id, false);
+    }
+
+    public static async Task<Dictionary<Guid, bool>> GetNonCreatorEngagementByTaskAsync(
+        TenantRlsSession session,
+        IReadOnlyList<WorkTask> tasks,
+        CancellationToken cancellationToken)
+    {
+        if (tasks.Count == 0)
+        {
+            return [];
+        }
+
+        var engaged = tasks.ToDictionary(task => task.Id, task => task.HasExternalEngagement);
+        var pendingIds = tasks.Where(task => !task.HasExternalEngagement).Select(task => task.Id).ToArray();
+        if (pendingIds.Length == 0)
+        {
+            return engaged;
+        }
+
+        var creatorByTask = tasks.ToDictionary(task => task.Id, task => task.CreatedByMembershipId);
+
+        var commented = await session.DbContext.WorkTaskComments
+            .AsNoTracking()
+            .Where(comment => pendingIds.Contains(comment.TaskId))
+            .Select(comment => new { comment.TaskId, comment.AuthorMembershipId })
+            .ToListAsync(cancellationToken);
+        foreach (var row in commented)
+        {
+            if (creatorByTask[row.TaskId] != row.AuthorMembershipId)
+            {
+                engaged[row.TaskId] = true;
+            }
+        }
+
+        var stillPending = pendingIds.Where(id => !engaged[id]).ToArray();
+        if (stillPending.Length == 0)
+        {
+            return engaged;
+        }
+
+        var activities = await session.DbContext.WorkTaskActivities
+            .AsNoTracking()
+            .Where(activity => stillPending.Contains(activity.TaskId))
+            .Select(activity => new { activity.TaskId, activity.ActorMembershipId })
+            .ToListAsync(cancellationToken);
+        foreach (var row in activities)
+        {
+            if (creatorByTask[row.TaskId] != row.ActorMembershipId)
+            {
+                engaged[row.TaskId] = true;
+            }
+        }
+
+        return engaged;
+    }
+
+    public static string? DescribeDeleteBlockedReason(TaskSubject subject, bool hasNonCreatorEngagement)
+    {
+        if (!subject.IsCreator)
+        {
+            return "task_not_creator";
+        }
+
+        if (!subject.HasWorkspaceEdit)
+        {
+            return "task_delete_forbidden";
+        }
+
+        if (hasNonCreatorEngagement)
+        {
+            return "task_seen_by_another_member";
+        }
+
+        return null;
+    }
+
+    public static TaskSubject DescribeSubject(
+        TenantRlsSession session,
+        TaskAuthorizationService authorization,
+        WorkspaceAuthorizationService workspaceAuthorization,
+        WorkspaceAccessLevel? explicitAccess,
+        WorkTask task)
+    {
+        var hasView = workspaceAuthorization.CanViewTask(session.HasImplicitFullResourceAccess, explicitAccess);
+        var hasEdit = workspaceAuthorization.CanEditTask(session.HasImplicitFullResourceAccess, explicitAccess);
+        return authorization.Describe(session.MembershipId, task, hasView, hasEdit);
+    }
+
     public static async Task<IReadOnlyList<WorkTaskResponse>> ToTaskResponsesAsync(
         TenantRlsSession session,
         TaskAuthorizationService authorization,
+        WorkspaceAuthorizationService workspaceAuthorization,
+        WorkspaceAccessLevel? explicitAccess,
         IReadOnlyList<WorkTask> tasks,
         bool markSelectedSeen,
         CancellationToken cancellationToken)
@@ -337,9 +486,11 @@ internal static class TaskCollaboration
                     return group.Count(row => viewed == default || row.CreatedAtUtc > viewed);
                 });
 
+        var engagementByTask = await GetNonCreatorEngagementByTaskAsync(session, tasks, cancellationToken);
+
         if (markSelectedSeen && tasks.Count == 1)
         {
-            await MarkSeenAsync(session, tasks[0].Id, cancellationToken);
+            await MarkSeenAsync(session, tasks[0], cancellationToken);
         }
 
         return tasks.Select(task =>
@@ -348,7 +499,10 @@ internal static class TaskCollaboration
             personById.TryGetValue(task.AssignedMembershipId ?? Guid.Empty, out var assignee);
             tagsByTask.TryGetValue(task.Id, out var tags);
             unseenByTask.TryGetValue(task.Id, out var unseen);
-            var subject = authorization.Describe(session.MembershipId, task, hasWorkspaceView: true);
+            var subject = DescribeSubject(
+                session, authorization, workspaceAuthorization, explicitAccess, task);
+            engagementByTask.TryGetValue(task.Id, out var hasEngagement);
+            var canDelete = authorization.CanDelete(subject, hasEngagement);
             return new WorkTaskResponse(
                 task.Id,
                 task.TenantId,
@@ -374,8 +528,9 @@ internal static class TaskCollaboration
                     authorization.CanManageTags(subject, task.Status),
                     authorization.CanReassign(subject, task.Status),
                     authorization.CanComment(subject, task.Status),
-                    authorization.CanDelete(subject),
-                    authorization.AllowedStatuses(subject, task.Status).Select(status => status.ToString()).ToArray()));
+                    canDelete,
+                    authorization.AllowedStatuses(subject, task.Status).Select(status => status.ToString()).ToArray(),
+                    DescribeDeleteBlockedReason(subject, hasEngagement)));
         }).ToArray();
     }
 

@@ -9,13 +9,14 @@ import {
   useState,
 } from "react";
 
-import { listInvitations, listTenants } from "../api/client";
-import type { TenantMembership } from "../api/types";
+import { listInvitations, listTenants, getAccountCapabilities } from "../api/client";
+import type { AccountCapabilities, TenantMembership } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 
 type TenantDirectoryValue = {
   tenants: TenantMembership[];
   invitations: TenantMembership[];
+  accountCapabilities: AccountCapabilities | null;
   isRefreshing: boolean;
   error: unknown | null;
   refresh: () => Promise<void>;
@@ -29,6 +30,7 @@ export function TenantDirectoryProvider({ children }: { children: ReactNode }) {
   const requestId = useRef(0);
   const [tenants, setTenants] = useState<TenantMembership[]>([]);
   const [invitations, setInvitations] = useState<TenantMembership[]>([]);
+  const [accountCapabilities, setAccountCapabilities] = useState<AccountCapabilities | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
 
@@ -53,6 +55,7 @@ export function TenantDirectoryProvider({ children }: { children: ReactNode }) {
     if (!token) {
       setTenants([]);
       setInvitations([]);
+      setAccountCapabilities(null);
       setError(null);
       setIsRefreshing(false);
       return;
@@ -60,15 +63,17 @@ export function TenantDirectoryProvider({ children }: { children: ReactNode }) {
 
     setIsRefreshing(true);
     try {
-      const [nextTenants, nextInvitations] = await Promise.all([
+      const [nextTenants, nextInvitations, nextCapabilities] = await Promise.all([
         listTenants(token),
         listInvitations(token),
+        getAccountCapabilities(token),
       ]);
       if (current !== requestId.current) {
         return;
       }
       setTenants(nextTenants);
       setInvitations(nextInvitations);
+      setAccountCapabilities(nextCapabilities);
       setError(null);
     } catch (cause) {
       if (current === requestId.current) {
@@ -83,6 +88,8 @@ export function TenantDirectoryProvider({ children }: { children: ReactNode }) {
   }, [token]);
 
   useEffect(() => {
+    // Token-scoped directory fetch. setState here synchronizes remote memberships.
+    // oxlint-disable-next-line react/set-state-in-effect
     void refresh().catch(() => undefined);
     return () => {
       requestId.current += 1;
@@ -90,8 +97,16 @@ export function TenantDirectoryProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const value = useMemo(
-    () => ({ tenants, invitations, isRefreshing, error, refresh, markInvitationAccepted }),
-    [tenants, invitations, isRefreshing, error, refresh, markInvitationAccepted],
+    () => ({
+      tenants,
+      invitations,
+      accountCapabilities,
+      isRefreshing,
+      error,
+      refresh,
+      markInvitationAccepted,
+    }),
+    [tenants, invitations, accountCapabilities, isRefreshing, error, refresh, markInvitationAccepted],
   );
 
   return (
@@ -101,6 +116,8 @@ export function TenantDirectoryProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// Hook colocated with its provider. Splitting the file would not change behavior.
+// oxlint-disable-next-line react/only-export-components
 export function useTenantDirectory(): TenantDirectoryValue {
   const value = useContext(TenantDirectoryContext);
   if (!value) {

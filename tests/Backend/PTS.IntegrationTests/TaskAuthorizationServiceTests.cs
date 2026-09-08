@@ -16,7 +16,7 @@ public sealed class TaskAuthorizationServiceTests
     public void Creator_owns_definition_status_tags_reassign_and_delete()
     {
         var task = TaskFor(creator: Id(1), assignee: Id(2));
-        var subject = _authorization.Describe(Id(1), task, hasWorkspaceView: true);
+        var subject = _authorization.Describe(Id(1), task, hasWorkspaceView: true, hasWorkspaceEdit: true);
 
         Assert.True(_authorization.CanView(subject));
         Assert.True(_authorization.CanEditDefinition(subject, WorkTaskStatus.Open));
@@ -34,7 +34,7 @@ public sealed class TaskAuthorizationServiceTests
     public void Current_assignee_can_collaborate_but_cannot_rewrite_or_close()
     {
         var task = TaskFor(creator: Id(1), assignee: Id(2));
-        var subject = _authorization.Describe(Id(2), task, hasWorkspaceView: true);
+        var subject = _authorization.Describe(Id(2), task, hasWorkspaceView: true, hasWorkspaceEdit: true);
 
         Assert.True(_authorization.CanView(subject));
         Assert.False(_authorization.CanEditDefinition(subject, WorkTaskStatus.Open));
@@ -55,8 +55,8 @@ public sealed class TaskAuthorizationServiceTests
     public void Previous_assignee_and_view_member_are_read_and_comment_only()
     {
         var task = TaskFor(creator: Id(1), assignee: Id(3));
-        var previous = _authorization.Describe(Id(2), task, hasWorkspaceView: true);
-        var viewer = _authorization.Describe(Id(4), task, hasWorkspaceView: true);
+        var previous = _authorization.Describe(Id(2), task, hasWorkspaceView: true, hasWorkspaceEdit: true);
+        var viewer = _authorization.Describe(Id(4), task, hasWorkspaceView: true, hasWorkspaceEdit: true);
 
         Assert.True(_authorization.CanView(previous));
         Assert.True(_authorization.CanComment(previous, WorkTaskStatus.Open));
@@ -68,6 +68,24 @@ public sealed class TaskAuthorizationServiceTests
         Assert.False(_authorization.CanEditDefinition(viewer, WorkTaskStatus.Open));
         Assert.True(_authorization.CanEditOwnComment(viewer, Id(4)));
         Assert.False(_authorization.CanEditOwnComment(viewer, Id(1)));
+    }
+
+    [Fact]
+    public void View_only_workspace_denies_all_mutations_even_for_creator_and_assignee()
+    {
+        var task = TaskFor(creator: Id(1), assignee: Id(2));
+        var creator = _authorization.Describe(Id(1), task, hasWorkspaceView: true, hasWorkspaceEdit: false);
+        var assignee = _authorization.Describe(Id(2), task, hasWorkspaceView: true, hasWorkspaceEdit: false);
+
+        Assert.True(_authorization.CanView(creator));
+        Assert.True(_authorization.CanView(assignee));
+        Assert.False(_authorization.CanEditDefinition(creator, WorkTaskStatus.Open));
+        Assert.False(_authorization.CanManageTags(assignee, WorkTaskStatus.Open));
+        Assert.False(_authorization.CanReassign(assignee, WorkTaskStatus.Open));
+        Assert.False(_authorization.CanComment(creator, WorkTaskStatus.Open));
+        Assert.False(_authorization.CanComment(assignee, WorkTaskStatus.Open));
+        Assert.False(_authorization.CanDelete(creator));
+        Assert.False(_authorization.CanChangeStatus(assignee, WorkTaskStatus.Open, WorkTaskStatus.InProgress));
     }
 
     [Fact]

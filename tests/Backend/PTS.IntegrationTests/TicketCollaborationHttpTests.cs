@@ -119,7 +119,8 @@ public sealed class TicketCollaborationHttpTests : IClassFixture<PtsWebApplicati
         editedComment.EnsureSuccessStatusCode();
 
         var viewComment = await viewClient.PostAsJsonAsync(CommentPath(path), new CreateWorkTaskCommentRequest("I can see this"));
-        viewComment.EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Forbidden, viewComment.StatusCode);
+        Assert.Equal("task_comment_forbidden", await ReadErrorAsync(viewComment));
 
         var resolved = await saraClient.PutAsJsonAsync(
             path,
@@ -296,6 +297,7 @@ public sealed class TicketCollaborationHttpTests : IClassFixture<PtsWebApplicati
 
         var firstView = await saraClient.GetFromJsonAsync<WorkTaskResponse>(path);
         Assert.True(firstView!.UnseenActivityCount >= 1);
+        (await saraClient.PostAsync($"{path}/seen", null)).EnsureSuccessStatusCode();
         var listedAfterView = await saraClient.GetFromJsonAsync<WorkTaskResponse[]>(
             TaskPath(tenant.TenantId, workspace.WorkspaceId, project.ProjectId));
         Assert.Equal(0, Assert.Single(listedAfterView!, item => item.TaskId == created.TaskId).UnseenActivityCount);
@@ -461,7 +463,7 @@ public sealed class TicketCollaborationHttpTests : IClassFixture<PtsWebApplicati
     {
         var response = await client.PostAsJsonAsync(
             $"/tenants/{tenantId}/workspaces/{workspaceId}/projects",
-            new CreateProjectRequest(name));
+            TestProjectFactory.CreateRequest(name));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ProjectResponse>())!;
     }

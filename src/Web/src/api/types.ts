@@ -16,13 +16,40 @@ export type TenantMembership = {
   slug: string;
   role: string;
   status: string;
+  workspaceCount?: number;
+  canManage?: boolean;
+};
+
+export type AccountCapabilities = {
+  canCreateOrganization: boolean;
+  organizationLimit: number;
+  currentOrganizationCount: number;
+  activeMembershipCount: number;
+  pendingInvitationCount: number;
+};
+
+export type AccountProfile = {
+  email: string;
+  displayName: string;
+  hasLocalCredential: boolean;
+};
+
+export type AuthProviders = {
+  google: {
+    available: boolean;
+  };
 };
 
 export type Workspace = {
   workspaceId: string;
   tenantId: string;
   name: string;
+  description?: string | null;
+  startDate?: string | null;
+  createdAtUtc: string;
+  updatedAtUtc?: string | null;
   accessLevel: WorkspaceAccessLevel;
+  canManage?: boolean;
 };
 
 export type WorkspaceAccessLevel = "View" | "Edit";
@@ -32,6 +59,10 @@ export type Project = {
   tenantId: string;
   workspaceId: string;
   name: string;
+  description?: string | null;
+  accentToken?: string | null;
+  openTaskCount: number;
+  createdAtUtc: string;
 };
 
 export type TenantMember = {
@@ -40,13 +71,59 @@ export type TenantMember = {
   displayName: string;
   email: string;
   role: "Owner" | "Admin" | "Member";
-  status: "Invited" | "Active" | "Suspended";
+  status: "Invited" | "Active" | "Suspended" | "Removed";
+  joinedAtUtc: string;
+  avatarUrl?: string | null;
+  hasImplicitWorkspaceAccess: boolean;
+  workspaceAccessCount: number | null;
+  activeTaskCount: number;
+  completedTaskCount: number;
+  totalAssignedTaskCount: number;
+  completionRate: number | null;
+};
+
+export type PendingInvitation = {
+  invitationId: string;
+  invitedEmail: string;
+  role: "Owner" | "Admin" | "Member";
+  expiresAtUtc: string;
+  createdAtUtc: string;
+  membershipId: string | null;
+};
+
+export type InvitationPreview = {
+  organizationName: string;
+  invitedEmail: string;
+  role: string;
+  expiresAtUtc: string;
+  inviterDisplayName: string | null;
+  requiresRegistration: boolean;
+  workspaceGrants: { workspaceName: string; accessLevel: string }[];
+};
+
+export type InvitationCreated = {
+  invitationId: string;
+  invitedEmail: string;
+  expiresAtUtc: string;
+  invitationUrl: string | null;
+  emailDeliveryDeferred: boolean;
 };
 
 export type WorkspaceAccess = {
   membershipId: string;
   workspaceId: string;
   accessLevel: WorkspaceAccessLevel;
+};
+
+export type WorkspaceMemberAccess = {
+  membershipId: string;
+  userId: string;
+  displayName: string;
+  email: string;
+  role: "Owner" | "Admin" | "Member";
+  status: "Invited" | "Active" | "Suspended" | "Removed";
+  hasImplicitWorkspaceAccess: boolean;
+  effectiveAccess: "Full" | "View" | "Edit" | "None";
 };
 
 export type TaskStatus = "Open" | "InProgress" | "Waiting" | "Resolved" | "Closed";
@@ -65,6 +142,7 @@ export type TaskCapabilities = {
   canComment: boolean;
   canDelete: boolean;
   allowedStatuses: TaskStatus[];
+  deleteBlockedReason?: string | null;
 };
 
 export type WorkTask = {
@@ -88,6 +166,7 @@ export type WorkTask = {
   createdByEmail: string | null;
   unseenActivityCount: number;
   capabilities: TaskCapabilities | null;
+  reference?: string | null;
 };
 
 export type WorkTaskComment = {
@@ -127,10 +206,34 @@ export type WorkNotification = {
   taskId: string | null;
   workspaceId: string | null;
   projectId: string | null;
+  taskTitle?: string | null;
+  projectName?: string | null;
   isRead: boolean;
   createdAtUtc: string;
 };
 
+export type GlobalNotification = {
+  notificationId: string;
+  tenantId: string;
+  tenantName: string;
+  type: string;
+  taskId: string | null;
+  workspaceId: string | null;
+  projectId: string | null;
+  taskTitle: string | null;
+  projectName: string | null;
+  isRead: boolean;
+  targetAvailable: boolean;
+  createdAtUtc: string;
+};
+
+export type GlobalNotificationInbox = {
+  items: GlobalNotification[];
+  unreadCount: number;
+};
+
 export type ApiErrorBody = {
   error?: string;
+  existingName?: string;
+  existingKey?: string;
 };

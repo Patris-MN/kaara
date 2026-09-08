@@ -8,7 +8,17 @@
   "save": "Save",
   "cancel": "Cancel",
   "close": "Close",
+  "keepEditing": "Keep editing",
+  "discardChanges": "Discard changes",
+  "discardChangesTitle": "Discard changes?",
+  "discardChangesBody": "You have unsaved changes. If you leave now, your changes will be lost.",
   "loading": "Loading…",
+  "feedback": {
+    "region": "Action feedback",
+    "dismiss": "Dismiss notification",
+    "connectionTitle": "Connection problem",
+    "connectionBody": "We couldn't reach the server. Check your connection and try again."
+  },
   "signedInAs": "Signed in as {{name}}",
   "platformAdministrator": "Platform administrator",
   "notFound": {
@@ -23,6 +33,7 @@
     "request_failed": "The request could not be completed.",
     "invalid_email": "Enter a valid email address.",
     "invalid_password": "Enter a password of at least 8 characters.",
+    "invalid_current_password": "Current password is incorrect.",
     "invalid_display_name": "Enter a display name.",
     "invalid_registration": "Registration could not be completed.",
     "email_already_registered": "That email is already registered.",
@@ -36,6 +47,7 @@
     "invalid_project": "Enter a project name.",
     "workspace_not_found": "That workspace was not found.",
     "tenant_access_denied": "You do not have access to that organization.",
+    "tenant_update_forbidden": "You cannot change this organization.",
     "workspace_create_forbidden": "You cannot create a workspace in this organization.",
     "workspace_edit_forbidden": "You cannot change this workspace or its projects.",
     "workspace_access_manage_forbidden": "You cannot manage workspace access for this organization.",

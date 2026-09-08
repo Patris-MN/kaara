@@ -1,0 +1,141 @@
+---
+alwaysApply: true
+---
+# Product UX
+
+These are structural UX principles. Exact colors, radii, and spacing belong in
+components and `App.css`, not in this rule.
+
+## List-first resource management
+
+When creation is occasional, the page is the existing list plus a primary
+New/Create action that opens a modal, drawer, or dedicated flow. Do not park a
+large permanent create form above the list.
+
+Exception: when the user has zero resources and creation is the obvious next
+step, the empty state may promote creation.
+
+## Progressive disclosure
+
+Do not put implementation terms (for example "slug") in the primary workflow
+when a human-readable field can drive the same backend value.
+
+## No redundant information
+
+Do not repeat counts, labels, or metadata in multiple places unless each
+instance has a distinct purpose.
+
+## Context awareness
+
+Users must be able to see their active Organization/Tenant. That display never
+replaces server-derived tenant authorization. Do not trust `TenantId` from the
+client for authorization.
+
+## Permission-aware UI
+
+Use server-provided capabilities when present. Hiding or disabling controls is
+UX only; the backend remains authoritative.
+
+Missing or unknown capability data must fail **conservatively**. It must not
+grant creator-like mutation controls. Do not treat "Workspace Edit" as full
+creator rights when capabilities are absent.
+
+## Accessibility
+
+New interactive flows need semantics, keyboard access, focus handling (including
+dialog trap/restore/Escape), labels, and state that is not color-only.
+
+## Localization
+
+New user-facing strings require EN, AR, and KU. RTL must keep working. Use
+logical start/end, not hardcoded left/right, where layout depends on direction.
+
+## Comfortable B2B density
+
+PTS should use whitespace to communicate hierarchy and grouping, not create
+large inactive regions.
+
+Related controls and the content they operate on must remain visually
+connected.
+
+Resource pages should make effective use of available viewport space while
+maintaining reasonable max-widths for readability.
+
+Avoid both extremes:
+
+- cramped/dense enterprise tables with no breathing room
+- oversized consumer-style cards and large decorative whitespace
+
+Prefer compact, professional B2B information density.
+
+## Responsive design
+
+Core workflows must remain usable at supported desktop and mobile widths.
+
+## Action feedback
+
+Every meaningful Create, Update, Delete, Invite, or similar mutation should
+provide explicit outcome feedback.
+
+Feedback should describe what happened rather than using generic "Success"
+or "Error" messages.
+
+Correctable field problems belong near the affected field. System or action
+outcomes use an appropriate global feedback surface (for example the shared
+action-feedback toast).
+
+Animation must be restrained, performant, accessible, and must never delay
+the actual operation.
+
+## Reuse
+
+Prefer existing primitives (`Dialog`, `Field`, page header, resource toolbar,
+action feedback, empty state, list row) over a second slightly different
+component for the same job.
+
+## Resource action proximity
+
+Primary Add/Create actions on resource-management pages should remain visually
+associated with the resource collection and its controls. When a resource
+toolbar exists, prefer placing the primary resource action in or adjacent to
+that toolbar rather than isolating it at a distant page edge.
+
+## Global user attention
+
+Shell-level user attention surfaces such as Notifications must represent the
+authenticated user's actionable state, not depend on arbitrary current-page
+tenant selection.
+
+Tenant-generated items must retain visible tenant context.
+
+## Notification information hierarchy
+
+Notifications should explain:
+
+- where the event happened
+- what happened
+- which resource it affected
+- when it happened
+
+Avoid generic messages when meaningful resource context is available.
+
+## Read / unread
+
+Unread state should be clear but restrained.
+
+Do not use heavy card decoration or color alone to communicate unread state.
+
+## Invite, don't create users
+
+Organization administrators invite people by email. They do not directly create
+another person's global identity/account.
+
+## Identity before membership activation
+
+An invitation may reserve/persist an Invited membership, but normal tenant access
+begins only after secure identity onboarding and acceptance.
+
+## Admin surfaces show authority clearly
+
+Role, status, and workspace access must be understandable without exposing
+internal permission implementation details.

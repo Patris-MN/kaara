@@ -30,10 +30,15 @@ public sealed class WorkNotificationConfiguration : IEntityTypeConfiguration<Wor
         builder.Property(notification => notification.TaskId).HasColumnName("task_id");
         builder.Property(notification => notification.WorkspaceId).HasColumnName("workspace_id");
         builder.Property(notification => notification.ProjectId).HasColumnName("project_id");
+        builder.Property(notification => notification.TaskTitle).HasColumnName("task_title").HasMaxLength(200);
+        builder.Property(notification => notification.ProjectName).HasColumnName("project_name").HasMaxLength(200);
         builder.Property(notification => notification.IsRead).HasColumnName("is_read").IsRequired();
         builder.Property(notification => notification.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
 
         builder.HasIndex(notification => new { notification.TenantId, notification.RecipientMembershipId, notification.IsRead })
             .HasDatabaseName("ix_notifications_tenant_recipient_unread");
+
+        builder.HasIndex(notification => new { notification.RecipientMembershipId, notification.CreatedAtUtc })
+            .HasDatabaseName("ix_notifications_recipient_created");
     }
 }

@@ -8,6 +8,8 @@ import enMembers from "../locales/en/members.json";
 import enNavigation from "../locales/en/navigation.json";
 import enProjects from "../locales/en/projects.json";
 import enNotifications from "../locales/en/notifications.json";
+import enInvitations from "../locales/en/invitations.json";
+import enProfile from "../locales/en/profile.json";
 import enTasks from "../locales/en/tasks.json";
 import enTenants from "../locales/en/tenants.json";
 import enWorkspaces from "../locales/en/workspaces.json";
@@ -17,6 +19,8 @@ import arMembers from "../locales/ar/members.json";
 import arNavigation from "../locales/ar/navigation.json";
 import arProjects from "../locales/ar/projects.json";
 import arNotifications from "../locales/ar/notifications.json";
+import arInvitations from "../locales/ar/invitations.json";
+import arProfile from "../locales/ar/profile.json";
 import arTasks from "../locales/ar/tasks.json";
 import arTenants from "../locales/ar/tenants.json";
 import arWorkspaces from "../locales/ar/workspaces.json";
@@ -26,6 +30,8 @@ import kuMembers from "../locales/ku/members.json";
 import kuNavigation from "../locales/ku/navigation.json";
 import kuProjects from "../locales/ku/projects.json";
 import kuNotifications from "../locales/ku/notifications.json";
+import kuInvitations from "../locales/ku/invitations.json";
+import kuProfile from "../locales/ku/profile.json";
 import kuTasks from "../locales/ku/tasks.json";
 import kuTenants from "../locales/ku/tenants.json";
 import kuWorkspaces from "../locales/ku/workspaces.json";
@@ -43,6 +49,8 @@ const resources = {
     members: enMembers,
     tasks: enTasks,
     notifications: enNotifications,
+    invitations: enInvitations,
+    profile: enProfile,
   },
   ar: {
     common: arCommon,
@@ -54,6 +62,8 @@ const resources = {
     members: arMembers,
     tasks: arTasks,
     notifications: arNotifications,
+    invitations: arInvitations,
+    profile: arProfile,
   },
   ku: {
     common: kuCommon,
@@ -65,6 +75,8 @@ const resources = {
     members: kuMembers,
     tasks: kuTasks,
     notifications: kuNotifications,
+    invitations: kuInvitations,
+    profile: kuProfile,
   },
 } as const;
 

@@ -428,7 +428,7 @@ public sealed class TaskAssignmentTagsNotificationsHttpTests : IClassFixture<Pts
     {
         var response = await client.PostAsJsonAsync(
             $"/tenants/{tenantId}/workspaces/{workspaceId}/projects",
-            new CreateProjectRequest(name));
+            TestProjectFactory.CreateRequest(name));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ProjectResponse>())!;
     }

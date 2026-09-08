@@ -8,4 +8,10 @@ public enum MembershipStatus
     Invited,
     Active,
     Suspended,
+
+    /// <summary>
+    /// Terminal organization access state. Historical task/comment references
+    /// remain intact; the user cannot act in the tenant again.
+    /// </summary>
+    Removed,
 }

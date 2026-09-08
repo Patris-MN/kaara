@@ -9,6 +9,7 @@ import App from "../App";
 import { clearSession } from "./session";
 import { getDirectionForLocale } from "../i18n/direction";
 import { TenantDirectoryProvider } from "../tenancy/TenantDirectoryProvider";
+import { deriveAccountCapabilities } from "../test/directoryFetchHandlers";
 import enAuth from "../locales/en/auth.json";
 import arAuth from "../locales/ar/auth.json";
 import kuAuth from "../locales/ku/auth.json";
@@ -95,6 +96,12 @@ describe("frontend vertical slice", () => {
         }
         if (url.endsWith("/invitations")) {
           return new Response(JSON.stringify([]), { status: 200 });
+        }
+        if (url.endsWith("/account/capabilities")) {
+          return new Response(JSON.stringify(deriveAccountCapabilities([])), { status: 200 });
+        }
+        if (url.endsWith("/notifications") && !url.includes("/tenants/")) {
+          return new Response(JSON.stringify({ items: [], unreadCount: 0 }), { status: 200 });
         }
         return new Response(JSON.stringify({ error: "missing" }), { status: 404 });
       }),

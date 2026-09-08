@@ -1,12 +1,14 @@
 # Architecture Charter
 
-Status: **Phase 4.5 — Frontend vertical slice wired to authenticated tenant/workspace/project APIs**
-Last updated: 2026-08-24
+Status: **Phase 7.1 — UX/a11y/QA hardening (live browser QA not run)**
+Last updated: 2026-08-30
 
-This document is the source of truth for how this system is built. When code and
-this document disagree, that is a bug in one of the two — raise it, don't silently
-pick one. Persistent, machine-enforced versions of the rules below live in
-`.cursor/rules/`.
+This document is the source of truth for **how** this system is built
+(principles, module boundaries, tenancy, RLS). The current **implemented
+product baseline** is [`README.md`](../../README.md). When code and this
+document disagree on a principle, that is a bug in one of the two — raise it,
+don't silently pick one. Persistent, machine-enforced versions of the rules
+below live in `.cursor/rules/`.
 
 ## 1. Purpose
 
@@ -16,8 +18,9 @@ Tenancy (`Tenant`/`Membership`), server-side `TenantContext`, and tenant-owned
 PostgreSQL RLS. Phase 3 added JWT authentication, `ICurrentUser`, and RLS on
 `users` / `tenants` / `memberships` (ADR-0005). Persistence composition is in
 `docs/architecture/decisions/0004-ports-and-adapters-for-persistence.md`.
-Product features (projects, tasks, billing, notifications, dashboards, file
-uploads) are still not implemented.
+Workspaces, projects, tasks, comments, tags, and in-app notifications are
+implemented (Phase 6). Billing, entitlements enforcement, dashboards, and file
+uploads are still not implemented.
 
 ## 2. Architecture style: Modular Monolith
 
@@ -67,6 +70,37 @@ Three distinct concepts, never merged:
   permissions, entirely separate from any `Membership` role.
 
 Full rules: `.cursor/rules/20-identity-membership-platform-admin.mdc`.
+
+### 3.1 Authorization scopes (Phase 8.1.5)
+
+PTS evaluates authorization in three separate scopes. They must never be
+conflated:
+
+| Scope | Examples | Evaluated from |
+|---|---|---|
+| **Global / account** | `CanCreateOrganization` | Account entitlement (`IOrganizationCreationEntitlementProvider`, `GET /account/capabilities`) |
+| **Tenant / organization role** | Create Workspace, invite/manage members, manage Member `WorkspaceAccess` | Active `Membership` role (Owner / Admin / Member) |
+| **Resource access** | View/Edit within a Workspace | `WorkspaceAccess` for Active Members (**multi-grant**); implicit all-workspace access for Owner/Admin |
+
+**Role** defines organization-level authority. **WorkspaceAccess** defines
+where an ordinary Member may work. Workspace assignment updates grants only —
+it does not move Users, duplicate Memberships, or cross Organizations.
+
+**Create Organization** is a global entitlement — never inferred from tenant
+Owner/Admin/Member role.
+
+**Create Workspace** is a tenant capability — Owner and Admin only.
+
+**Create Project** requires tenant role (Owner/Admin) **or** Member with
+Workspace **Edit** access. Projects inherit workspace authorization.
+
+**Account-level People Directory** (centralized administration of Membership
+relationships across multiple Organizations under one billing account) is
+**deferred** — it requires a real account authority model, not tenant Admin.
+
+Pre-Billing development policy for organization creation lives in
+`PTS.Host` (`DevelopmentOrganizationCreationEntitlementProvider`). See
+[`decisions/0012-global-account-authorization.md`](decisions/0012-global-account-authorization.md).
 
 ## 4. Multi-Tenancy & Data Isolation
 

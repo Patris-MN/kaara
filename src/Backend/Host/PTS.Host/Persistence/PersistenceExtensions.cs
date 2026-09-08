@@ -31,7 +31,9 @@ public static class PersistenceExtensions
         services.AddScoped<IMembershipLookup, EfMembershipLookup>();
         services.AddScoped<IUserAccountStore, EfUserAccountStore>();
         services.AddScoped<ITenantLifecycleStore, EfTenantLifecycleStore>();
+        services.AddScoped<ITenantInvitationStore, EfTenantInvitationStore>();
         services.AddScoped<ITenantRlsSessionFactory, TenantRlsSessionFactory>();
+        services.AddScoped<IUserRlsSessionFactory, UserRlsSessionFactory>();
         services.AddScoped<IPlatformAdministratorStore, EfPlatformAdministratorStore>();
         services.AddHostedService<DevelopmentPlatformAdministratorBootstrap>();
 

@@ -37,7 +37,8 @@ established tenant context correctly. Rows are still protected independently by
 PostgreSQL Row-Level Security — this module setting tenant context is defense in
 depth, not the only line of defense.
 
-## Phase 1 status
+## Current status (Phase 7 — no Tenancy API/schema change)
 
-Architectural placeholder only. No tenant/membership persistence or resolution logic
-is implemented in this phase.
+`Tenant` and `Membership` persistence, Owner bootstrap, invite/accept, and
+server-side tenant-context resolution are implemented. HTTP adapters live in
+Host. Product baseline: repository root `README.md`.
