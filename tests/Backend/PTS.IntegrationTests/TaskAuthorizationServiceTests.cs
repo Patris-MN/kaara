@@ -42,7 +42,7 @@ public sealed class TaskAuthorizationServiceTests
         Assert.True(_authorization.CanReassign(subject, WorkTaskStatus.Open));
         Assert.True(_authorization.CanComment(subject, WorkTaskStatus.Open));
         Assert.False(_authorization.CanComment(subject, WorkTaskStatus.Closed));
-        Assert.False(_authorization.CanDelete(subject));
+        Assert.True(_authorization.CanDelete(subject));
         Assert.True(_authorization.CanChangeStatus(subject, WorkTaskStatus.Open, WorkTaskStatus.InProgress));
         Assert.True(_authorization.CanChangeStatus(subject, WorkTaskStatus.InProgress, WorkTaskStatus.Waiting));
         Assert.True(_authorization.CanChangeStatus(subject, WorkTaskStatus.Waiting, WorkTaskStatus.Resolved));
@@ -63,8 +63,9 @@ public sealed class TaskAuthorizationServiceTests
         Assert.False(_authorization.CanManageTags(previous, WorkTaskStatus.Open));
         Assert.False(_authorization.CanReassign(previous, WorkTaskStatus.Open));
         Assert.False(_authorization.CanChangeStatus(previous, WorkTaskStatus.Open, WorkTaskStatus.InProgress));
-        Assert.False(_authorization.CanDelete(previous));
+        Assert.True(_authorization.CanDelete(previous));
         Assert.True(_authorization.CanComment(viewer, WorkTaskStatus.Open));
+        Assert.True(_authorization.CanDelete(viewer));
         Assert.False(_authorization.CanEditDefinition(viewer, WorkTaskStatus.Open));
         Assert.True(_authorization.CanEditOwnComment(viewer, Id(4)));
         Assert.False(_authorization.CanEditOwnComment(viewer, Id(1)));

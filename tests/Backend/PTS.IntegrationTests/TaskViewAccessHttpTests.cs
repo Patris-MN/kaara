@@ -142,6 +142,7 @@ public sealed class TaskViewAccessHttpTests : IClassFixture<PtsWebApplicationFac
         Assert.False(assigneeRead!.Capabilities!.CanEditDefinition);
         Assert.True(assigneeRead.Capabilities.CanManageTags);
         Assert.True(assigneeRead.Capabilities.CanComment);
+        Assert.True(assigneeRead.Capabilities.CanDelete);
 
         (await assigneeClient.PutAsJsonAsync(
             path,

@@ -64,9 +64,16 @@ public static class TaskEndpoints
                          || task.Status == WorkTaskStatus.InProgress
                          || task.Status == WorkTaskStatus.Waiting),
                     cancellationToken);
+            var taskCount = await session.DbContext.WorkTasks
+                .AsNoTracking()
+                .CountAsync(
+                    task =>
+                        task.TenantId == session.TenantId &&
+                        task.ProjectId == projectId,
+                    cancellationToken);
 
             await session.CommitAsync(cancellationToken);
-            return Results.Ok(ToProjectResponse(resolved.Project!, openCount));
+            return Results.Ok(ToProjectResponse(resolved.Project!, openCount, taskCount));
         }
         catch (AuthenticationRequiredException)
         {
@@ -531,7 +538,7 @@ public static class TaskEndpoints
             var hasEngagement = await TaskCollaboration.HasNonCreatorEngagementAsync(session, task, cancellationToken);
             if (!taskAuthorization.CanDelete(subject, hasEngagement))
             {
-                if (subject.IsCreator && subject.HasWorkspaceEdit && hasEngagement)
+                if (subject.HasWorkspaceEdit && hasEngagement)
                 {
                     return Results.Conflict(new { error = "task_already_seen_cannot_delete" });
                 }
@@ -1075,7 +1082,10 @@ public static class TaskEndpoints
             && Enum.IsDefined(priority);
     }
 
-    private static ProjectResponse ToProjectResponse(Project project, int openTaskCount = 0)
+    private static ProjectResponse ToProjectResponse(
+        Project project,
+        int openTaskCount = 0,
+        int taskCount = 0)
         => new(
             project.Id,
             project.TenantId,
@@ -1084,6 +1094,7 @@ public static class TaskEndpoints
             project.Description,
             project.AccentToken,
             openTaskCount,
+            taskCount,
             project.CreatedAtUtc);
 
     private sealed record ResolvedProject(

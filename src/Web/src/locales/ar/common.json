@@ -57,6 +57,8 @@
     "invalid_task_relationship": "هذه المهمة لا تنتمي إلى هذا المشروع.",
     "task_not_found": "المهمة غير موجودة.",
     "project_not_found": "المشروع غير موجود.",
+    "project_has_tasks": "احذف جميع المهام في هذا المشروع قبل حذف المشروع.",
+    "project_delete_forbidden": "ليس لديك صلاحية لحذف هذا المشروع.",
     "task_edit_forbidden": "لا يمكنك تعديل المهام في مساحة العمل هذه.",
     "task_field_forbidden": "لا يمكنك تغيير هذا الحقل في هذه المهمة.",
     "task_status_forbidden": "لا يمكنك تعيين هذه الحالة لهذه المهمة.",

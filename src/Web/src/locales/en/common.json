@@ -62,6 +62,8 @@
     "invalid_task_relationship": "That task does not belong to this project.",
     "task_not_found": "That task was not found.",
     "project_not_found": "That project was not found.",
+    "project_has_tasks": "Delete all tasks in this project before deleting the project.",
+    "project_delete_forbidden": "You don't have permission to delete this project.",
     "task_edit_forbidden": "You cannot change tasks in this workspace.",
     "task_field_forbidden": "You cannot change that field on this task.",
     "task_status_forbidden": "You cannot set that status on this task.",

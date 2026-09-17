@@ -58,26 +58,33 @@ internal sealed class DevelopmentPlatformAdministratorBootstrap : IHostedService
         var accounts = scope.ServiceProvider.GetRequiredService<IUserAccountStore>();
         var platformAdministrators = scope.ServiceProvider.GetRequiredService<IPlatformAdministratorStore>();
 
-        Guid userId;
         try
         {
-            var created = await authentication.RegisterAsync(email, password, displayName, cancellationToken);
-            userId = created.Id;
-        }
-        catch (DuplicateEmailException)
-        {
-            var credential = await accounts.FindCredentialByEmailAsync(email.Trim().ToLowerInvariant(), cancellationToken);
-            if (credential is null)
+            Guid userId;
+            try
             {
-                _logger.LogWarning("Platform-admin bootstrap email is registered but the credential row was not found.");
-                return;
+                var created = await authentication.RegisterAsync(email, password, displayName, cancellationToken);
+                userId = created.Id;
+            }
+            catch (DuplicateEmailException)
+            {
+                var credential = await accounts.FindCredentialByEmailAsync(email.Trim().ToLowerInvariant(), cancellationToken);
+                if (credential is null)
+                {
+                    _logger.LogWarning("Platform-admin bootstrap email is registered but the credential row was not found.");
+                    return;
+                }
+
+                userId = credential.UserId;
             }
 
-            userId = credential.UserId;
+            await platformAdministrators.EnsureAsync(userId, cancellationToken);
+            _logger.LogInformation("Ensured platform administrator grant for {Email}.", email);
         }
-
-        await platformAdministrators.EnsureAsync(userId, cancellationToken);
-        _logger.LogInformation("Ensured platform administrator grant for {Email}.", email);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Platform-admin bootstrap failed; the host will still start.");
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

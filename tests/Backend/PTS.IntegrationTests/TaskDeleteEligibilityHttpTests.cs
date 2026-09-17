@@ -19,7 +19,7 @@ public sealed class TaskDeleteEligibilityHttpTests : IClassFixture<PtsWebApplica
     }
 
     [SkippableFact]
-    public async Task Creator_can_delete_unseen_task_and_non_creator_cannot_delete()
+    public async Task Edit_member_can_delete_unseen_task()
     {
         Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
 
@@ -47,14 +47,8 @@ public sealed class TaskDeleteEligibilityHttpTests : IClassFixture<PtsWebApplica
 
         var task = await CreateTaskAsync(ownerClient, tenant.TenantId, workspace.WorkspaceId, project.ProjectId, "Delete me");
 
-        var memberDelete = await memberClient.DeleteAsync(
-            TaskPath(tenant.TenantId, workspace.WorkspaceId, project.ProjectId, task.TaskId));
-        Assert.Equal(HttpStatusCode.Forbidden, memberDelete.StatusCode);
-        Assert.Equal("task_delete_forbidden", await ReadErrorAsync(memberDelete));
-
-        var creatorDelete = await ownerClient.DeleteAsync(
-            TaskPath(tenant.TenantId, workspace.WorkspaceId, project.ProjectId, task.TaskId));
-        creatorDelete.EnsureSuccessStatusCode();
+        (await memberClient.DeleteAsync(
+            TaskPath(tenant.TenantId, workspace.WorkspaceId, project.ProjectId, task.TaskId))).EnsureSuccessStatusCode();
     }
 
     [SkippableFact]

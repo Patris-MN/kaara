@@ -12,6 +12,8 @@ using PTS.Modules.Tenancy;
 using PTS.Modules.WorkManagement;
 using PTS.SharedKernel.Entitlements;
 
+LocalDevelopmentEnvironment.ApplyDotEnvIfPresent();
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services

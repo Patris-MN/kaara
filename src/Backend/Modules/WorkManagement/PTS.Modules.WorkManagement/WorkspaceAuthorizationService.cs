@@ -59,4 +59,10 @@ public sealed class WorkspaceAuthorizationService
     /// </summary>
     public bool CanManageProjectMetadata(bool hasImplicitFullAccess)
         => hasImplicitFullAccess;
+
+    /// <summary>
+    /// Owner/Admin may delete empty projects (no tasks).
+    /// </summary>
+    public bool CanDeleteProject(bool hasImplicitFullAccess)
+        => hasImplicitFullAccess;
 }

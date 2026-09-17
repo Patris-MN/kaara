@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using PTS.Modules.Identity;
 
 namespace PTS.Host.Persistence;
@@ -20,8 +21,16 @@ internal sealed class EfUserAccountStore : IUserAccountStore
 
         db.Users.Add(user);
         db.UserCredentials.Add(credential);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw new DuplicateEmailException(user.Email);
+        }
     }
 
     public async Task<UserCredential?> FindCredentialByEmailAsync(string email, CancellationToken cancellationToken = default)
@@ -75,4 +84,7 @@ internal sealed class EfUserAccountStore : IUserAccountStore
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
+
+    private static bool IsUniqueViolation(DbUpdateException ex)
+        => ex.InnerException is PostgresException pg && pg.SqlState == PostgresErrorCodes.UniqueViolation;
 }

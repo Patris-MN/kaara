@@ -34,9 +34,10 @@ public static class LocalPostgresConnectionStrings
         {
             throw new InvalidOperationException(
                 $"Environment variable '{passwordEnvVar}' is not set. Copy " +
-                "infra/docker/.env.example to infra/docker/.env, set real local " +
-                "passwords, export them into your shell, and retry. The running " +
-                "application must never fall back to a hardcoded or superuser credential.");
+                "infra/docker/.env.example to infra/docker/.env and set real local " +
+                "passwords. Development loads that file automatically; otherwise " +
+                "export the variables in your shell (scripts/Load-DevEnv.ps1) and retry. " +
+                "The running application must never fall back to a hardcoded or superuser credential.");
         }
 
         var host = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "localhost";

@@ -20,6 +20,7 @@ public static class WorkManagementEndpoints
         tenant.MapPost("/workspaces/{workspaceId:guid}/projects", CreateProjectAsync);
         tenant.MapGet("/workspaces/{workspaceId:guid}/projects", ListProjectsAsync);
         tenant.MapPatch("/workspaces/{workspaceId:guid}/projects/{projectId:guid}", UpdateProjectAsync);
+        tenant.MapDelete("/workspaces/{workspaceId:guid}/projects/{projectId:guid}", DeleteProjectAsync);
         tenant.MapGet("/members", ListMembersAsync);
         tenant.MapGet("/members/{membershipId:guid}/workspace-access", ListWorkspaceAccessAsync);
         tenant.MapPut("/members/{membershipId:guid}/workspace-access", ReplaceWorkspaceAccessAsync);
@@ -414,7 +415,7 @@ public static class WorkManagementEndpoints
 
             return Results.Created(
                 $"/tenants/{session.TenantId}/workspaces/{workspace.Id}/projects/{project.Id}",
-                MapProject(project, openTaskCount: 0));
+                MapProject(project, openTaskCount: 0, taskCount: 0));
         }
         catch (AuthenticationRequiredException)
         {
@@ -471,23 +472,17 @@ public static class WorkManagementEndpoints
                 .ToListAsync(cancellationToken);
 
             var projectIds = projects.Select(p => p.Id).ToList();
-            var openCounts = projectIds.Count == 0
-                ? new Dictionary<Guid, int>()
-                : await session.DbContext.WorkTasks
-                    .AsNoTracking()
-                    .Where(task =>
-                        task.TenantId == session.TenantId &&
-                        projectIds.Contains(task.ProjectId) &&
-                        (task.Status == WorkTaskStatus.Open
-                         || task.Status == WorkTaskStatus.InProgress
-                         || task.Status == WorkTaskStatus.Waiting))
-                    .GroupBy(task => task.ProjectId)
-                    .Select(group => new { group.Key, Count = group.Count() })
-                    .ToDictionaryAsync(item => item.Key, item => item.Count, cancellationToken);
+            var (openCounts, taskCounts) = await LoadProjectTaskCountsAsync(
+                session,
+                projectIds,
+                cancellationToken);
 
             await session.CommitAsync(cancellationToken);
             return Results.Ok(projects.Select(project =>
-                MapProject(project, openCounts.GetValueOrDefault(project.Id))));
+                MapProject(
+                    project,
+                    openCounts.GetValueOrDefault(project.Id),
+                    taskCounts.GetValueOrDefault(project.Id))));
         }
         catch (AuthenticationRequiredException)
         {
@@ -587,19 +582,92 @@ public static class WorkManagementEndpoints
                 return Results.Conflict(new { error = "project_name_conflict", existingName });
             }
 
-            var openTaskCount = await session.DbContext.WorkTasks
-                .AsNoTracking()
-                .CountAsync(
-                    task =>
-                        task.TenantId == session.TenantId &&
-                        task.ProjectId == project.Id &&
-                        (task.Status == WorkTaskStatus.Open
-                         || task.Status == WorkTaskStatus.InProgress
-                         || task.Status == WorkTaskStatus.Waiting),
-                    cancellationToken);
+            var (openCounts, taskCounts) = await LoadProjectTaskCountsAsync(
+                session,
+                [project.Id],
+                cancellationToken);
 
             await session.CommitAsync(cancellationToken);
-            return Results.Ok(MapProject(project, openTaskCount));
+            return Results.Ok(MapProject(
+                project,
+                openCounts.GetValueOrDefault(project.Id),
+                taskCounts.GetValueOrDefault(project.Id)));
+        }
+        catch (AuthenticationRequiredException)
+        {
+            return Results.Unauthorized();
+        }
+        catch (UnknownAuthenticatedUserException)
+        {
+            return Results.Unauthorized();
+        }
+        catch (TenantAccessDeniedException)
+        {
+            return Results.Json(new { error = "tenant_access_denied" }, statusCode: StatusCodes.Status403Forbidden);
+        }
+    }
+
+    private static async Task<IResult> DeleteProjectAsync(
+        Guid tenantId,
+        Guid workspaceId,
+        Guid projectId,
+        ICurrentUser currentUser,
+        ITenantRlsSessionFactory sessions,
+        WorkspaceAuthorizationService authorization,
+        CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated)
+        {
+            return Results.Unauthorized();
+        }
+
+        try
+        {
+            await using var session = await sessions.OpenAsync(tenantId, cancellationToken);
+            var workspace = await session.DbContext.Workspaces
+                .AsNoTracking()
+                .FirstOrDefaultAsync(w => w.Id == workspaceId, cancellationToken);
+            if (workspace is null)
+            {
+                return Results.NotFound(new { error = "workspace_not_found" });
+            }
+
+            var explicitAccess = await GetExplicitAccessAsync(session, workspaceId, cancellationToken);
+            if (!authorization.CanViewProject(session.HasImplicitFullResourceAccess, explicitAccess))
+            {
+                return Results.NotFound(new { error = "workspace_not_found" });
+            }
+
+            if (!authorization.CanDeleteProject(session.HasImplicitFullResourceAccess))
+            {
+                return Results.Json(
+                    new { error = "project_delete_forbidden" },
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            var project = await session.DbContext.Projects
+                .FirstOrDefaultAsync(
+                    p => p.Id == projectId && p.WorkspaceId == workspaceId,
+                    cancellationToken);
+            if (project is null)
+            {
+                return Results.NotFound(new { error = "project_not_found" });
+            }
+
+            var taskCount = await session.DbContext.WorkTasks
+                .AsNoTracking()
+                .CountAsync(
+                    task => task.TenantId == session.TenantId && task.ProjectId == project.Id,
+                    cancellationToken);
+            if (taskCount > 0)
+            {
+                return Results.Conflict(new { error = "project_has_tasks", taskCount });
+            }
+
+            session.DbContext.Projects.Remove(project);
+            await session.DbContext.SaveChangesAsync(cancellationToken);
+            await session.CommitAsync(cancellationToken);
+            return Results.NoContent();
         }
         catch (AuthenticationRequiredException)
         {
@@ -1336,7 +1404,39 @@ public static class WorkManagementEndpoints
         return description.Trim();
     }
 
-    private static ProjectResponse MapProject(Project project, int openTaskCount) =>
+    private static async Task<(Dictionary<Guid, int> OpenCounts, Dictionary<Guid, int> TaskCounts)> LoadProjectTaskCountsAsync(
+        TenantRlsSession session,
+        IReadOnlyList<Guid> projectIds,
+        CancellationToken cancellationToken)
+    {
+        if (projectIds.Count == 0)
+        {
+            return ([], []);
+        }
+
+        var taskCounts = await session.DbContext.WorkTasks
+            .AsNoTracking()
+            .Where(task => task.TenantId == session.TenantId && projectIds.Contains(task.ProjectId))
+            .GroupBy(task => task.ProjectId)
+            .Select(group => new { group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.Key, item => item.Count, cancellationToken);
+
+        var openCounts = await session.DbContext.WorkTasks
+            .AsNoTracking()
+            .Where(task =>
+                task.TenantId == session.TenantId &&
+                projectIds.Contains(task.ProjectId) &&
+                (task.Status == WorkTaskStatus.Open
+                 || task.Status == WorkTaskStatus.InProgress
+                 || task.Status == WorkTaskStatus.Waiting))
+            .GroupBy(task => task.ProjectId)
+            .Select(group => new { group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.Key, item => item.Count, cancellationToken);
+
+        return (openCounts, taskCounts);
+    }
+
+    private static ProjectResponse MapProject(Project project, int openTaskCount, int taskCount = 0) =>
         new(
             project.Id,
             project.TenantId,
@@ -1345,6 +1445,7 @@ public static class WorkManagementEndpoints
             project.Description,
             project.AccentToken,
             openTaskCount,
+            taskCount,
             project.CreatedAtUtc);
 }
 
@@ -1399,6 +1500,7 @@ public sealed record ProjectResponse(
     string? Description,
     string? AccentToken,
     int OpenTaskCount,
+    int TaskCount,
     DateTimeOffset CreatedAtUtc);
 
 public sealed record TenantMemberResponse(

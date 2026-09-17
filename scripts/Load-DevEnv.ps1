@@ -15,8 +15,19 @@ Dot-source it to affect the current session:
 #>
 [CmdletBinding()]
 param(
-    [string] $EnvFile = (Join-Path $PSScriptRoot '..\infra\docker\.env')
+    [string] $EnvFile
 )
+
+if ([string]::IsNullOrWhiteSpace($EnvFile)) {
+    $scriptDir = $PSScriptRoot
+    if ([string]::IsNullOrWhiteSpace($scriptDir) -and $MyInvocation.MyCommand.Path) {
+        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+        $scriptDir = Join-Path (Get-Location) 'scripts'
+    }
+    $EnvFile = Join-Path $scriptDir '..\infra\docker\.env'
+}
 
 $ErrorActionPreference = 'Stop'
 

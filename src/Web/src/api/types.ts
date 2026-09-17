@@ -62,6 +62,7 @@ export type Project = {
   description?: string | null;
   accentToken?: string | null;
   openTaskCount: number;
+  taskCount: number;
   createdAtUtc: string;
 };
 

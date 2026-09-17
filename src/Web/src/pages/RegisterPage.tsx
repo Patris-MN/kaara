@@ -8,12 +8,10 @@ import { AuthDivider, GoogleSignInButton } from "../auth/GoogleSignInButton";
 import { isRegistrationPasswordReady, PasswordFieldGroup } from "../auth/PasswordFieldGroup";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { Field, TextLink } from "../components/Ui";
-import { useFeedback } from "../feedback/FeedbackProvider";
 
 export function RegisterPage() {
   const { t } = useTranslation(["auth", "common"]);
   const { register } = useAuth();
-  const { show } = useFeedback();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -35,11 +33,6 @@ export function RegisterPage() {
     setError(null);
     try {
       await register(email, password, displayName);
-      show({
-        tone: "success",
-        title: t("auth:registerSuccessTitle"),
-        body: t("auth:registerSuccessBody"),
-      });
       navigate("/login", { replace: true, state: { registered: true } });
     } catch (cause) {
       if (isApiError(cause) && cause.code === "email_already_registered") {

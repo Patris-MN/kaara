@@ -2,7 +2,7 @@ namespace PTS.Modules.WorkManagement;
 
 /// <summary>
 /// Task-level actions after Workspace access has already been granted.
-/// Workspace Edit is required for every mutation; this service decides field rights.
+/// Workspace Edit is required for every mutation and for delete; this service decides field rights.
 /// </summary>
 public sealed class TaskAuthorizationService
 {
@@ -51,7 +51,7 @@ public sealed class TaskAuthorizationService
             && subject.MembershipId == authorMembershipId;
 
     public bool CanDelete(TaskSubject subject, bool hasNonCreatorEngagement = false)
-        => subject.HasWorkspaceEdit && subject.IsCreator && !hasNonCreatorEngagement;
+        => subject.HasWorkspaceEdit && !hasNonCreatorEngagement;
 
     public bool CanChangeStatus(TaskSubject subject, WorkTaskStatus from, WorkTaskStatus to)
         => subject.HasWorkspaceEdit

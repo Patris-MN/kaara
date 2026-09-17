@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -104,12 +104,14 @@ export function LoginPage() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [recoveryNotice, setRecoveryNotice] = useState(false);
+  const registeredNoticeShownRef = useRef(false);
 
   useEffect(() => {
     const registered = (location.state as { registered?: boolean } | null)?.registered;
-    if (!registered) {
+    if (!registered || registeredNoticeShownRef.current) {
       return;
     }
+    registeredNoticeShownRef.current = true;
     show({
       tone: "success",
       title: t("auth:registerSuccessTitle"),

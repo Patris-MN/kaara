@@ -57,6 +57,8 @@
     "invalid_task_relationship": "ئەم ئەرکە سەر بەم پڕۆژەیە نییە.",
     "task_not_found": "ئەرکەکە نەدۆزرایەوە.",
     "project_not_found": "پڕۆژەکە نەدۆزرایەوە.",
+    "project_has_tasks": "پێش سڕینەوەی پرۆژەکە، هەموو ئەرکەکانی ئەم پرۆژەیە بسڕەوە.",
+    "project_delete_forbidden": "مۆڵەتت نییە ئەم پرۆژەیە بسڕیتەوە.",
     "task_edit_forbidden": "ناتوانیت ئەرکەکان لەم شوێنی کارە بگۆڕیت.",
     "task_field_forbidden": "ناتوانیت ئەو خانەیە لەم ئەرکە بگۆڕیت.",
     "task_status_forbidden": "ناتوانیت ئەو دۆخە بۆ ئەم ئەرکە دابنێیت.",

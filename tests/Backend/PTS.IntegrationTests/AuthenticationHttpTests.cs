@@ -3,8 +3,10 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PTS.Host.Http;
+using PTS.Host.Persistence;
 using PTS.Modules.Tenancy;
 
 namespace PTS.IntegrationTests;
@@ -58,6 +60,39 @@ public sealed class AuthenticationHttpTests : IClassFixture<PtsWebApplicationFac
         Assert.False(created.IsPlatformAdministrator);
         Assert.False(tokens.IsPlatformAdministrator);
         Assert.False(me.IsPlatformAdministrator);
+    }
+
+    [SkippableFact]
+    public async Task Duplicate_register_returns_conflict()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var client = _web.CreateClient();
+        var email = $"auth-dup-{Guid.NewGuid():N}@example.test";
+        var first = await client.PostAsJsonAsync("/auth/register", new RegisterRequest(email, "correct-horse", "User"));
+        first.EnsureSuccessStatusCode();
+
+        var second = await client.PostAsJsonAsync("/auth/register", new RegisterRequest(email, "correct-horse", "User"));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task Register_when_user_row_exists_without_credentials_returns_conflict()
+    {
+        Skip.IfNot(_postgres.DatabaseAvailable, _postgres.UnavailableReason);
+
+        var data = _postgres.Services.GetRequiredService<TestDataFactory>();
+        var userId = await data.CreateUserAsync("authorphan");
+
+        await using var db = await _postgres.Services.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        await PostgresRlsSettings.SetCurrentUserIdAsync(db, userId, CancellationToken.None);
+        var email = await db.Users.Where(u => u.Id == userId).Select(u => u.Email).SingleAsync();
+        await tx.CommitAsync();
+
+        var client = _web.CreateClient();
+        var response = await client.PostAsJsonAsync("/auth/register", new RegisterRequest(email, "correct-horse", "User"));
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
     [SkippableFact]

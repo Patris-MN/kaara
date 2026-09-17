@@ -388,11 +388,6 @@ internal static class TaskCollaboration
 
     public static string? DescribeDeleteBlockedReason(TaskSubject subject, bool hasNonCreatorEngagement)
     {
-        if (!subject.IsCreator)
-        {
-            return "task_not_creator";
-        }
-
         if (!subject.HasWorkspaceEdit)
         {
             return "task_delete_forbidden";

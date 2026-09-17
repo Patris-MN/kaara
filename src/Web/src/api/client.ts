@@ -221,6 +221,21 @@ export function updateProject(
   );
 }
 
+export function deleteProject(
+  token: string,
+  tenantId: string,
+  workspaceId: string,
+  projectId: string,
+) {
+  return apiRequest<void>(
+    `/tenants/${tenantId}/workspaces/${workspaceId}/projects/${projectId}`,
+    {
+      method: "DELETE",
+      token,
+    },
+  );
+}
+
 export function getProject(
   token: string,
   tenantId: string,

@@ -2,13 +2,14 @@ import { type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState }
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { createProject, getWorkspace, listProjects, updateProject } from "../api/client";
+import { createProject, deleteProject, getWorkspace, listProjects, updateProject } from "../api/client";
 import { isApiError } from "../api/errors";
 import { shouldApplyResponse } from "../api/requestIdentity";
 import type { Project, Workspace } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { ContextMenu } from "../components/ContextMenu";
 import { CreateProjectDialog } from "../components/CreateProjectDialog";
+import { Dialog } from "../components/Dialog";
 import { EditProjectDialog } from "../components/EditProjectDialog";
 import { EmptyState } from "../components/EmptyState";
 import { PageHeader } from "../components/PageHeader";
@@ -20,8 +21,10 @@ import { useFeedback } from "../feedback/FeedbackProvider";
 import type { MemberMenuItem } from "../members/memberActions";
 import {
   canCreateProject,
+  canDeleteProject,
   canEditProjectMetadata,
   filterProjects,
+  projectHasTasks,
   readProjectView,
   sortProjects,
   writeProjectView,
@@ -41,9 +44,13 @@ function stopCardNavigation(event: MouseEvent) {
 function ProjectActionsMenu({
   label,
   onEdit,
+  onDelete,
+  showDelete,
 }: {
   label: string;
   onEdit: () => void;
+  onDelete?: () => void;
+  showDelete?: boolean;
 }) {
   const { t } = useTranslation(["projects"]);
   const items: MemberMenuItem[] = [
@@ -53,6 +60,14 @@ function ProjectActionsMenu({
       onClick: onEdit,
     },
   ];
+  if (showDelete && onDelete) {
+    items.push({
+      id: "delete-project",
+      label: t("projects:deleteProject"),
+      onClick: onDelete,
+      destructive: true,
+    });
+  }
 
   return (
     <div className="project-card-menu" onClick={stopCardNavigation} onMouseDown={stopCardNavigation}>
@@ -88,10 +103,16 @@ export function WorkspaceProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBlockedOpen, setDeleteBlockedOpen] = useState(false);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const membership = tenants.find((item) => item.tenantId === tenantId) ?? null;
   const mayCreate = canCreateProject(workspace?.accessLevel);
   const mayEditMetadata = canEditProjectMetadata(membership?.role);
+  const mayDeleteProject = canDeleteProject(membership?.role);
   const canManageWorkspaceAccess = Boolean(
     workspace?.canManage ?? (membership?.role === "Owner" || membership?.role === "Admin"),
   );
@@ -170,6 +191,57 @@ export function WorkspaceProjectsPage() {
     setEditNameError(null);
     setEditFormError(null);
     setEditOpen(true);
+  }
+
+  function openDeleteDialog(project: Project) {
+    setDeletingProject(project);
+    setDeleteError(null);
+    if (projectHasTasks(project)) {
+      setDeleteBlockedOpen(true);
+      return;
+    }
+    setDeleteOpen(true);
+  }
+
+  async function onDeleteProject() {
+    if (!token || !tenantId || !workspaceId || !deletingProject || deleteBusy || !mayDeleteProject) {
+      return;
+    }
+    setDeleteError(null);
+    setDeleteBusy(true);
+    try {
+      await deleteProject(token, tenantId, workspaceId, deletingProject.projectId);
+      setProjects((current) =>
+        current.filter((project) => project.projectId !== deletingProject.projectId),
+      );
+      setDeleteOpen(false);
+      setDeletingProject(null);
+      show({
+        tone: "success",
+        title: t("projects:deletedTitle"),
+        body: t("projects:deletedBody", { name: deletingProject.name }),
+      });
+    } catch (cause) {
+      if (isApiError(cause) && cause.code === "project_has_tasks") {
+        setDeleteOpen(false);
+        setDeleteBlockedOpen(true);
+        return;
+      }
+      if (
+        isApiError(cause) &&
+        (cause.code === "project_delete_forbidden" || cause.status === 403)
+      ) {
+        setDeleteError(t("projects:errors.deleteForbidden"));
+        return;
+      }
+      if (isApiError(cause) && cause.code === "tenant_access_denied") {
+        setDeleteError(t("projects:errors.permissionsChanged"));
+        return;
+      }
+      setDeleteError(t("projects:errors.deleteFailed"));
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function onCreateProject(payload: {
@@ -452,6 +524,8 @@ export function WorkspaceProjectsPage() {
                         <ProjectActionsMenu
                           label={t("projects:projectActions", { name: project.name })}
                           onEdit={() => openEditDialog(project)}
+                          showDelete={mayDeleteProject}
+                          onDelete={() => openDeleteDialog(project)}
                         />
                       </td>
                     ) : null}
@@ -470,6 +544,8 @@ export function WorkspaceProjectsPage() {
                     <ProjectActionsMenu
                       label={t("projects:projectActions", { name: project.name })}
                       onEdit={() => openEditDialog(project)}
+                      showDelete={mayDeleteProject}
+                      onDelete={() => openDeleteDialog(project)}
                     />
                   ) : null}
                 </div>
@@ -566,6 +642,93 @@ export function WorkspaceProjectsPage() {
         }}
         onSubmit={onUpdateProject}
       />
+
+      <Dialog
+        open={deleteOpen}
+        size="compact"
+        titleId="delete-project-title"
+        title={t("projects:deleteConfirmTitle")}
+        closeLabel={t("common:close")}
+        onClose={() => {
+          setDeleteOpen(false);
+          setDeletingProject(null);
+          setDeleteError(null);
+        }}
+      >
+        <p>
+          {deletingProject
+            ? t("projects:deleteConfirmNamed", { name: deletingProject.name })
+            : t("projects:deleteConfirmBody")}
+        </p>
+        {deleteError ? <StatusBanner tone="error">{deleteError}</StatusBanner> : null}
+        <div className="task-actions">
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={deleteBusy}
+            onClick={() => {
+              setDeleteOpen(false);
+              setDeletingProject(null);
+              setDeleteError(null);
+            }}
+          >
+            {t("projects:cancelDelete")}
+          </button>
+          <button
+            type="button"
+            className="secondary-action context-menu-item-destructive-action"
+            disabled={deleteBusy}
+            onClick={() => void onDeleteProject()}
+          >
+            {deleteBusy ? t("projects:deleting") : t("projects:deleteProject")}
+          </button>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={deleteBlockedOpen}
+        size="compact"
+        titleId="delete-project-blocked-title"
+        title={t("projects:deleteBlockedTitle")}
+        closeLabel={t("common:close")}
+        onClose={() => {
+          setDeleteBlockedOpen(false);
+          setDeletingProject(null);
+        }}
+      >
+        <p>
+          {deletingProject
+            ? t("projects:deleteBlockedBody", {
+                name: deletingProject.name,
+                count: deletingProject.taskCount ?? 0,
+              })
+            : t("projects:deleteBlockedBodyGeneric")}
+        </p>
+        <div className="task-actions">
+          <button
+            type="button"
+            className="secondary-action"
+            onClick={() => {
+              setDeleteBlockedOpen(false);
+              setDeletingProject(null);
+            }}
+          >
+            {t("common:close")}
+          </button>
+          {deletingProject && tenantId && workspaceId ? (
+            <Link
+              className="primary-action"
+              to={`/app/tenants/${tenantId}/workspaces/${workspaceId}/projects/${deletingProject.projectId}`}
+              onClick={() => {
+                setDeleteBlockedOpen(false);
+                setDeletingProject(null);
+              }}
+            >
+              {t("projects:deleteBlockedGoToTasks")}
+            </Link>
+          ) : null}
+        </div>
+      </Dialog>
     </section>
   );
 }

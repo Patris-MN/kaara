@@ -63,3 +63,11 @@ export function canCreateProject(accessLevel: string | undefined): boolean {
 export function canEditProjectMetadata(role: string | undefined): boolean {
   return role === "Owner" || role === "Admin";
 }
+
+export function canDeleteProject(role: string | undefined): boolean {
+  return canEditProjectMetadata(role);
+}
+
+export function projectHasTasks(project: Pick<Project, "taskCount">): boolean {
+  return (project.taskCount ?? 0) > 0;
+}
